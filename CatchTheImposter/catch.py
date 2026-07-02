@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
 """catch.py - Catch the Impostor (Project 3, Shepherd's Gate Health Cooperative).
-
-A self-scoring anomaly-detection pipeline over an authentication log. It reads
-auth_events.csv, runs five hand-built detectors, prints the alerts it raises,
-and (when given the answer key) scores itself with precision and recall.
-
-Everything here is plain first-principles Python: the standard library only.
-No detector "learns" anything -- each is a rule I can defend line by line.
-
-Reproduce the graded run with:
-    python3 catch.py code/auth_events.csv --truth code/ground_truth.csv
-
-Tunable knobs live in config.json (thresholds + the service-account allow-list),
-so the reasoning is separated from the code. Override the file with --config.
 """
 import argparse
 import csv
