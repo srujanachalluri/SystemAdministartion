@@ -1,0 +1,10 @@
+{
+  "impossible_travel_kmh": 3000.0,
+  "business_start_hour": 7,
+  "business_end_hour": 19,
+  "service_accounts": ["svc_backup"],
+  "brute_force_min_failures": 5,
+  "brute_force_window_min": 15,
+  "spray_min_accounts": 5,
+  "spray_window_min": 60
+}
