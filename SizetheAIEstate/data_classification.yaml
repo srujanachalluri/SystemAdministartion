@@ -1,0 +1,92 @@
+# data_classification.yaml - Grace & Mercy Lutheran Ministries
+# Governance + tiering policy for the AI estate (Project 4).
+# The AI classifier (ch.4.8) PROPOSES a label; this policy is what a human
+# RATIFIES. Every asset has a sensitivity label AND a retention window with a
+# justification an auditor could act on. Lineage and retention are decisions.
+# EU AI Act note: high-risk obligation TIMELINES are in flux as of 2026
+# (Digital Omnibus deferral toward Dec 2, 2027; not yet formally adopted).
+# Treat Art.10/Art.12 dates below as PROVISIONAL - re-confirm before relying.
+
+version: 2
+owner: storage-admin@graceandmercy.example
+review_cadence_days: 90
+
+# Storage tiers: class -> media + target cost/GB-month (illustrative).
+tiers:
+  hot:     { media: nvme_ssd,             iops_floor: 50000, target_usd_per_gb_month: 0.20 }
+  warm:    { media: sata_ssd,             iops_floor: 5000,  target_usd_per_gb_month: 0.08 }
+  cold:    { media: hdd_raid6,            iops_floor: 150,   target_usd_per_gb_month: 0.02 }
+  archive: { media: object_glacier_class, retrieval_hours: 12, target_usd_per_gb_month: 0.004 }
+
+# Sensitivity drives WHERE data may live and HOW LONG it is kept.
+classes:
+  - name: base_model_weights
+    description: 13B base LLM weights (INT8), served on-prem.
+    sensitivity: internal
+    tier: hot
+    irreplaceable: false        # re-downloadable from the model vendor
+    lineage_required: true      # which base model + version
+    retention: while_in_service
+    disposition: delete_on_decommission
+
+  - name: fine_tuned_adapter
+    description: LoRA adapter produced from approved internal Q&A.
+    sensitivity: internal
+    tier: hot
+    irreplaceable: true         # cannot be re-derived without the PII dataset
+    lineage_required: true      # base model + training dataset id + date
+    retention: indefinite
+    backup: archive_replicated  # the durable artifact worth keeping
+    disposition: keep
+
+  - name: vector_index
+    description: pgvector HNSW index over the RAG corpus (halfvec 1536).
+    sensitivity: internal
+    tier: hot
+    irreplaceable: false        # rebuildable from embeddings/source (hours)
+    retention: while_in_service
+    disposition: rebuild_on_demand
+
+  - name: chunk_text_embeddings
+    description: doc_chunks table - chunk text + halfvec embeddings.
+    sensitivity: internal       # may inherit 'restricted' per source document
+    tier: hot
+    irreplaceable: false        # re-embeddable from source corpus
+    retention: while_in_service
+    disposition: re_embed_on_demand
+
+  - name: rag_source_corpus
+    description: Original sermons, policies, handbook, pastoral-care summaries.
+    sensitivity: restricted     # pastoral notes may contain PII / special-category
+    tier: cold
+    encryption_at_rest: required
+    irreplaceable: true         # may be the only copy of ministry records
+    retention: per_records_policy
+    backup: archive_replicated
+    disposition: keep
+
+  - name: fine_tuning_dataset_pii
+    description: Approved internal Q&A used to fine-tune; contains PII.
+    sensitivity: restricted     # PII / special-category data
+    tier: warm
+    encryption_at_rest: required
+    lineage_required: true      # EU AI Act Art.10: provenance + bias review (provisional)
+    legal_basis_documented: true
+    retention_days: 365         # PROVISIONAL - minimize exposure; delete on schedule
+    disposition: delete_after_retention
+
+  - name: inference_logs
+    description: Request/response + governance event logs (Art.12 logging).
+    sensitivity: restricted     # may capture PII in prompts
+    tier: archive
+    worm: true                  # write-once, audit-only
+    retention_days: 400         # PROVISIONAL Art.12 window - re-confirm
+    disposition: delete_after_retention
+
+  - name: scratch_embeddings
+    description: Transient embeddings from re-index / experimentation.
+    sensitivity: internal
+    tier: warm
+    irreplaceable: false
+    retention_days: 30          # 'a time to cast away' (Ecclesiastes 3:6)
+    disposition: delete_after_retention

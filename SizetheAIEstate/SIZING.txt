@@ -1,0 +1,187 @@
+================================================================================
+SIZING.txt - Grace & Mercy Lutheran Ministries - AI Storage & VRAM Estate Plan
+Project 4: Size the AI Estate  |  Chapter 4: Storage Administration
+Convention: 1 GiB = 1024^3 bytes (matches estate_sizer.py and pg_size_pretty).
+            Decimal GB (1e9) noted where it aids comparison.
+================================================================================
+
+--------------------------------------------------------------------------------
+0. WHAT WE ARE BUYING (one line)
+--------------------------------------------------------------------------------
+~75 GiB of primary storage (dominated by a ~48 GiB RAG vector store) + one 48 GB
+GPU to serve the 13B model; ~150-200 GiB provisioned once backup/DR (2-3x) is
+included. The 70B option adds ~20 GiB of weights AND a second GPU.
+
+--------------------------------------------------------------------------------
+1. MODEL SIZING  (weights-on-disk = params x bytes-per-weight)   [ch. 4.4]
+--------------------------------------------------------------------------------
+bytes-per-weight:  fp16=2.0   int8=1.0   int4=0.5
+weight_GiB = params(B) x 1e9 x bpw / 1024^3
+
+  13B:  fp16 = 13e9 x 2.0 / 1024^3 = 24.21 GiB   (= 26.0 GB decimal)
+        int8 = 13e9 x 1.0 / 1024^3 = 12.10 GiB
+        int4 = 13e9 x 0.5 / 1024^3 =  6.05 GiB
+
+  70B:  fp16 = 70e9 x 2.0 / 1024^3 = 130.38 GiB
+        int8 = 70e9 x 1.0 / 1024^3 =  65.19 GiB
+        int4 = 70e9 x 0.5 / 1024^3 =  32.60 GiB
+
+(Note: 13B fp16 = 24.21 GiB = 26.0 GB decimal. The "roughly 26 GB" figure uses
+decimal GB; the ~7.4% gap is GiB-vs-GB, not an error - exactly the kind of gap
+the assignment hint warns about.)
+
+DEPLOYED VRAM (not disk) = weights x (1 + headroom), headroom ~15-40%  [ch. 4.5]
+Assumption: ~4k-8k context, batch 1-2, vLLM/llama.cpp framework. Midpoint x1.3.
+
+  13B int8 deployed = 12.10 x 1.3 = 15.7 GiB   -> fits 48 GB, ~32 GiB to spare
+  13B fp16 deployed = 24.21 x 1.3 = 31.5 GiB   -> still fits 48 GB
+  70B int4 deployed = 32.60 x 1.3 = 42.4 GiB   -> fits 48 GB, only ~5.6 GiB spare
+  70B int8 deployed = 65.19 x 1.3 = 84.7 GiB   -> weights alone exceed 48 GB
+  70B fp16 deployed = 130.4 x 1.3 = 169.5 GiB  -> multi-GPU node only
+
+SMALLEST GPU THAT SERVES EACH:
+  13B  -> a single 24 GB card at int8 suffices; the ministry's 48 GB card is
+          more than enough at any quantization. VERDICT: 48 GB suffices easily.
+  70B  -> INT4: the 48 GB card, but ONLY short-context / batch-1 (see KV below).
+          INT8: needs 2x48 GB (96 GiB) or one 80 GB card.
+          FP16: needs a multi-GPU node (>=3x80 GB).
+          VERDICT: 48 GB card does NOT safely serve the 70B in production.
+
+KV-CACHE HEADROOM CHECK (why 70B INT4 is tight)   [ch. 4.5]   [Medium tier]
+KV bytes/token = 2 x n_layers x n_kv_heads x head_dim x bytes
+Assume 70B ~ 80 layers, GQA 8 KV heads, head_dim 128, fp16 KV (2B):
+  = 2 x 80 x 8 x 128 x 2 = 327,680 B/token = 0.3125 MiB/token
+    8k context, batch 1  ->  8192 x 0.3125 = 2.56 GiB
+    32k context, batch 1 -> 32768 x 0.3125 = 10.2 GiB
+    8k context, batch 4  ->           4 x 2.56 = 10.2 GiB
+On the 48 GB card: 70B INT4 weights (32.6) + KV at 8k/batch-1 = 35.2 GiB (ok),
+but 32k or batch-4 -> ~42.8 GiB before framework overhead; worst case (x1.4)
+= 45.6 GiB -> ~2.4 GiB from OOM. 70B INT4 on ONE 48 GB card is a batch-1,
+short-context configuration only. Re-confirm at deploy.
+
+--------------------------------------------------------------------------------
+2. VECTOR SIZING  (5,000,000 chunks x 1536 dims)   [ch. 4.6]
+--------------------------------------------------------------------------------
+Precision choice: halfvec (2 bytes/component). WHY: halves storage vs float32 at
+~no recall cost (pgvector / ch.4.6); int8 halves again but needs calibration and
+adds quantization error. halfvec is the safe default.
+
+RAW vectors:
+  float32 = 5e6 x 1536 x 4 / 1024^3 = 28.61 GiB
+  halfvec = 5e6 x 1536 x 2 / 1024^3 = 14.31 GiB   <- chosen
+  int8    = 5e6 x 1536 x 1 / 1024^3 =  7.15 GiB
+
+HNSW graph links (~8 x m bytes/vec, m=32 -> 256 B/vec):
+  = 5e6 x 256 / 1024^3 = 1.19 GiB   (~8% rider)
+
+NAIVE total (raw + links) = 14.31 + 1.19 = 15.50 GiB
+  (Equals estate_sizer.py vector_gb(5e6,1536,'halfvec') = 15.50 GiB.)
+
+*** THE LIVE PROOF (section 3) SHOWS THE NAIVE NUMBER IS ~2.5x TOO LOW. ***
+Measured-calibrated vector store (vectors + HNSW, extrapolated from live proof):
+  ~39 GiB. Add realistic chunk_text (5e6 x ~2 KB = ~9 GiB) -> RAG store ~48 GiB.
+
+--------------------------------------------------------------------------------
+3. PGVECTOR PROOF - PREDICT, THEN MEASURE   [Medium tier]
+--------------------------------------------------------------------------------
+Built a real Postgres 17 + pgvector; table doc_chunks(halfvec(1536)); loaded
+50,000 representative rows (1% of 5,000,000); built a real HNSW index (m=32,
+ef_construction=128). SQL: pgvector_proof.sql. Raw output: pgvector_proof_output.txt.
+
+PREDICTION (50,000 rows):
+  raw vectors  = 50,000 x 1536 x 2 = 153,600,000 B = 147 MiB
+  HNSW links   = 50,000 x 256      =  12,800,000 B =  12 MiB
+  text+PK+ovhd                                      ~   4 MiB
+  naive total                                       ~ 165 MiB
+  realistic prediction (HNSW keeps its own copy)    ~ 300 MiB
+
+MEASURED (pg_total_relation_size):
+  total_size      = 398 MB   (417,685,504 bytes)
+  heap_only       = 4464 kB  (main heap: ids, text, TOAST pointers)
+  heap_plus_toast = 202 MB   (the table's copy of the vectors, via TOAST)
+  all_indexes     = 196 MB   (HNSW + primary-key btree)
+
+GAP ANALYSIS (measured 398 MB vs naive 165 MB = 2.4x):
+  (a) HNSW stores a SECOND full copy of every vector (~196 MB index ~= the
+      table's ~197 MB TOAST copy). The "raw + 10% links" model ignores this.
+  (b) TOAST: 3072-byte halfvec values stored out-of-line in ~2 KB chunks with
+      per-chunk headers + a TOAST index -> 202 MB, not 147 MB (+~34%). Random
+      floats do not compress.
+  (c) Page alignment (8 KB pages) + 24-28 B tuple headers + PK btree.
+  Per-vector measured = 417,685,504 / 50,000 = 8,354 B  vs  naive 3,328 B.
+
+EXTRAPOLATION TO 5,000,000 (x100):
+  8,354 B x 5e6 = 41.77 GB = 38.9 GiB (~39 GiB, vectors+index).
+  This is why estate_sizer.py's 15.5 GiB is optimistic - it is a "weights-only"
+  style estimate for vectors. Budget ~39 GiB + ~9 GiB real chunk_text = ~48 GiB.
+
+--------------------------------------------------------------------------------
+4. DATASET SIZING  (explicit assumptions)   [ch. 4.4]
+--------------------------------------------------------------------------------
+RAG SOURCE CORPUS:
+  Assume 50,000 documents (sermons, policies, handbook, pastoral summaries),
+  avg 150 KB each. 50,000 x 150 KB = 7.5 GB = ~7 GiB.
+  Cross-check: 5,000,000 chunks / 50,000 docs = 100 chunks/doc @ ~500 tokens
+  (~2 KB) = ~200 KB text/doc -> consistent with 150 KB source. Assumptions cohere.
+
+FINE-TUNING DATASET (restricted, PII):
+  Assume 20,000 approved internal Q&A pairs, avg 2 KB (JSONL) = 40 MB = ~0.04 GiB.
+
+FINE-TUNED ARTIFACT:
+  Assume a rank-16 LoRA adapter on the 13B ~= 0.3 GiB (irreplaceable).
+  (If full-parameter fine-tune instead: +12 GiB, a full int8 model copy.)
+
+LOGS (EU AI Act Art. 12): assume ~5 GiB/year, WORM.
+SCRATCH EMBEDDINGS: ~2 GiB transient.
+
+--------------------------------------------------------------------------------
+5. TOTAL ESTATE SIZE
+--------------------------------------------------------------------------------
+  Model weights (13B INT8, served) ............ 12.10 GiB
+  Fine-tuned LoRA adapter (irreplaceable) .....  0.30 GiB
+  RAG vector store (halfvec+HNSW+text, MEASURED) 48.00 GiB
+  RAG source corpus (original docs) ...........  7.00 GiB
+  Fine-tuning dataset (JSONL, PII) ............  0.04 GiB
+  Inference logs (WORM, 1 yr) .................  5.00 GiB
+  Scratch embeddings .......................... 2.00 GiB
+  ------------------------------------------------------
+  PRIMARY TOTAL .............................. ~74.4 GiB  (~75 GiB)
+  With backup + DR replication (2-3x durable) . ~150-200 GiB provisioned
+
+  If 70B INT4 replaces 13B: model 12.10 -> 32.60 GiB (+20.5) AND a 2nd GPU.
+
+--------------------------------------------------------------------------------
+6. TIERING TABLE  (hot / warm / cold / archive)   [ch. 4.2-4.3]
+--------------------------------------------------------------------------------
+Grounded in real output (storage_audit.sh -> storage_audit_output.txt):
+  * lsblk: working volume /dev/loop4 (/workspaces) is ROTA=0 (SSD-class); the
+    raw sda/sdb/sdc report ROTA=1. Media is VERIFIED with lsblk, not assumed.
+  * df: /vscode at 81% used - past the ~85% cliff the audit warns slows many
+    filesystems. Hot tier needs headroom, not just speed.
+
+ASSET                 TIER     IOPS / THROUGHPUT JUSTIFICATION
+--------------------  -------  ------------------------------------------------
+Model weights (13B)   hot      Loaded to VRAM at startup, mmap random reads,
+                               served live. NVMe, ROTA=0, 50k+ IOPS.
+Fine-tuned adapter    hot      Loaded at serve time; latency-critical. Also
+                               replicated to archive (irreplaceable).
+Vector index (HNSW)   hot      ANN query = many random graph-node reads; p99
+                               latency is IOPS-bound. NVMe (proof: 196 MB of
+                               random-access index at 50k rows).
+Chunk text (Postgres) hot      Read on every retrieval hit; co-located w/ vectors.
+Fine-tuning data(PII) warm     Read only during training runs, not live. SATA
+                               SSD; encryption-at-rest required (restricted).
+RAG source corpus     cold     Read only at (re)embedding; sequential bulk reads,
+                               throughput-bound not IOPS-bound. HDD RAID6 (150).
+Inference logs (WORM) archive  Write-once, read only for audit. Object/glacier
+                               class; 12 h retrieval acceptable.
+Scratch embeddings    warm     Transient, 30-day cast-away. SATA SSD.
+
+Grounded call: vector index + model weights go on the ROTA=0 (SSD) volume; the
+source corpus and logs - exactly what a 180-day atime scan flags as rarely read
+- go to ROTA=1 / HDD-class cold & archive. Media verified via lsblk, not assumed.
+
+================================================================================
+END SIZING.txt - Numbers, not vibes. Every figure is reproducible from the
+formulas shown and the live pgvector measurement in section 3.
+================================================================================

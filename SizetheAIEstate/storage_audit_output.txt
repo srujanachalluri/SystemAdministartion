@@ -1,0 +1,39 @@
+== Filesystems, capacity, and headroom ==
+Filesystem     Type     Size  Used Avail Use% Mounted on
+overlay        overlay   32G  9.7G   21G  33% /
+/dev/root      ext4      29G   24G  5.7G  81% /vscode
+/dev/sda1      ext4      44G  2.2G   40G   6% /tmp
+/dev/loop4     ext4      32G  9.7G   21G  33% /workspaces
+
+== Block devices, RAID, and rotational vs SSD ==
+NAME     SIZE TYPE ROTA FSTYPE MOUNTPOINT
+loop0   63.8M loop    1        
+loop1   91.7M loop    1        
+loop2   49.3M loop    1        
+loop3    257G loop    0        
+loop4     32G loop    0        /workspaces/.codespaces/.persistedshare
+loop5    500M loop    0        
+sda       45G disk    1        
+└─sda1    45G part    1        /tmp
+sdb       30G disk    1        
+├─sdb1  29.9G part    1        /workspaces/.codespaces/shared
+├─sdb14    4M part    1        
+└─sdb15  106M part    1        
+sdc      512G disk    1        
+└─sdc1   512G part    1        
+sr0      628K rom     1        
+
+== Largest consumers under /workspaces (top 15) ==
+2.5M	/workspaces
+1.9M	/workspaces/SystemAdministartion
+1.1M	/workspaces/SystemAdministartion/.git
+752K	/workspaces/SystemAdministartion/CatchTheImposter
+576K	/workspaces/.codespaces
+360K	/workspaces/.codespaces/shared
+212K	/workspaces/.codespaces/.persistedshare
+32K	/workspaces/SystemAdministartion/SizetheAIEstate
+32K	/workspaces/.oryx
+
+== Files not read in 180+ days (cold-tier candidates, top 20) ==
+
+Audit complete. Numbers, not vibes. Now decide what to keep.

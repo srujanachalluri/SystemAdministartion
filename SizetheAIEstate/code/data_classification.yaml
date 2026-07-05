@@ -1,0 +1,50 @@
+# data_classification.yaml — a tiering + governance policy, as config.
+# The AI classifier in 4.8 PROPOSES a label; this policy is what a human
+# RATIFIES. Lineage and retention are decisions, not guesses. (4.7-4.8)
+# Referenced by Project 4 and Rep 5.
+
+version: 1
+owner: storage-admin@ministry.example
+review_cadence_days: 90
+
+# Storage tiers map a class to media + a target cost/GB-month (illustrative).
+tiers:
+  hot:   { media: nvme_ssd,  iops_floor: 50000, target_usd_per_gb_month: 0.20 }
+  warm:  { media: sata_ssd,  iops_floor: 5000,  target_usd_per_gb_month: 0.08 }
+  cold:  { media: hdd_raid6, iops_floor: 150,   target_usd_per_gb_month: 0.02 }
+  archive: { media: object_glacier_class, retrieval_hours: 12, target_usd_per_gb_month: 0.004 }
+
+# Sensitivity drives WHERE data may live and HOW LONG it is kept.
+classes:
+  - name: model_weights
+    sensitivity: internal
+    tier: hot                 # served live; latency matters
+    irreplaceable: true       # fine-tuned weights cannot be re-derived (ch.11)
+    retention: indefinite
+    lineage_required: true    # which base model + which dataset produced this
+
+  - name: vector_index
+    sensitivity: internal
+    tier: hot
+    irreplaceable: false      # rebuildable from source embeddings (ch.11)
+    retention: while_in_service
+
+  - name: training_data_pii
+    sensitivity: restricted   # PII / special-category data
+    tier: warm
+    encryption_at_rest: required
+    retention_days: 365
+    lineage_required: true    # EU AI Act Art. 10: provenance + bias review
+    legal_basis_documented: true
+
+  - name: raw_logs
+    sensitivity: internal
+    tier: cold
+    retention_days: 400       # Art. 12 logging lives in WORM (ch.11)
+    worm: true
+
+  - name: scratch_embeddings
+    sensitivity: internal
+    tier: warm
+    irreplaceable: false
+    retention_days: 30        # 'a time to cast away'

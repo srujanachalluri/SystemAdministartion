@@ -1,0 +1,16 @@
+CREATE EXTENSION
+DROP TABLE
+CREATE TABLE
+INSERT 0 50000
+SET
+CREATE INDEX
+ rows_loaded 
+-------------
+       50000
+(1 row)
+
+ total_size | heap_only | heap_plus_toast | all_indexes | total_bytes 
+------------+-----------+-----------------+-------------+-------------
+ 398 MB     | 4464 kB   | 202 MB          | 196 MB      |   417685504
+(1 row)
+
