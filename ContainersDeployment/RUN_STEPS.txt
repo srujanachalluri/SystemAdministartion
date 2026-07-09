@@ -1,0 +1,57 @@
+========================================================================
+PROJECT 7 — RUN CHECKLIST (works in GitHub Codespaces; Docker is pre-installed)
+Run each command in order. Copy the output into the matching section of REPORT.docx.
+========================================================================
+
+0) CONFIRM DOCKER IS THERE (Codespaces has it already; no install needed)
+   docker --version
+   docker compose version
+
+1) START THE WHOLE STACK WITH ONE COMMAND        -> REPORT section 2, step 2
+   docker compose up -d
+
+2) DOWNLOAD THE MODEL (one time)                 -> REPORT section 2, step 3
+   docker compose exec ollama ollama pull llama3.2:3b
+
+3) CHECK ALL CONTAINERS ARE RUNNING              -> REPORT section 2, step 4
+   docker compose ps
+
+4) PROVE THE MODEL SERVES ON THE /v1 API         -> REPORT section 3
+   curl http://localhost:11434/v1/chat/completions \
+     -H "Content-Type: application/json" \
+     -d '{"model":"llama3.2:3b","messages":[{"role":"user","content":"Explain Matthew 28:19 in one sentence."}]}'
+
+5) PROVE OUR APP ANSWERS (inference evidence)    -> REPORT section 3
+   curl -X POST http://localhost:8000/explain \
+     -H "Content-Type: application/json" \
+     -d '{"reference":"Matthew 28:19","question":"What is the command given here?"}'
+
+6) PROVE THE WEIGHTS PERSIST (survive delete)    -> REPORT section 4
+   docker compose stop ollama
+   docker compose rm -f ollama
+   docker compose up -d ollama
+   docker compose exec ollama ollama list
+   # llama3.2:3b should STILL be listed, with NO re-download.
+
+7) RUN THE SMOKE TEST                             -> REPORT section 5
+   ./smoke_test.sh
+   # want: ALL CHECKS PASSED
+
+8) IMAGE SIZE (how small you kept it)             -> REPORT section 6
+   docker compose images
+   docker images | grep verse-api
+
+9) PROVE NO SECRET IS BAKED IN                    -> REPORT section 7
+   docker history --no-trunc $(docker compose images -q verse-api)
+
+------------------------------------------------------------------------
+NOTES
+- Codespaces forwards ports: the chat UI (Open WebUI) is on port 3000, the
+  API on 8000, the model on 11434. Use the "Ports" tab to open them.
+- CPU inference is slower than a GPU — a first answer may take 10-30 seconds.
+- If Open WebUI is fussy on first run, the NORMAL tier only needs the
+  "ollama" and "verse-api" services; you can comment out "open-webui" in
+  compose.yaml and add it back later.
+- Editing REPORT.docx: do that in Word on your Mac. Copy the terminal
+  output from Codespaces and paste it into the red placeholders.
+------------------------------------------------------------------------

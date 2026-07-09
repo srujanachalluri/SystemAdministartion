@@ -1,0 +1,4 @@
+# Pinned dependencies — exact versions so the image builds the same next year.
+# "latest" is not a version. Re-check these on PyPI before a production rebuild.
+fastapi==0.116.1
+uvicorn[standard]==0.34.0

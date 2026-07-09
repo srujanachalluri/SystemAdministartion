@@ -1,0 +1,58 @@
+# compose.yaml — the whole Verse Helper stack, brought up with one command:
+#   docker compose up -d
+#
+# Three services:
+#   ollama      - the local LLM engine (serves the OpenAI-compatible /v1 API)
+#   verse-api   - our small FastAPI app (the Dockerfile in this folder), fronts Ollama
+#   open-webui  - a friendly chat UI a non-technical volunteer can use (Medium tier)
+#
+# Networking lesson: inside this compose network, containers reach each other by
+# SERVICE NAME, never by localhost. So verse-api talks to "http://ollama:11434",
+# not localhost. (localhost inside one container is only that container.)
+#
+# Config is injected at RUNTIME (environment: below), never baked into the image.
+
+services:
+  ollama:
+    image: ollama/ollama:0.3.14            # PINNED version; "latest" would drift over the year
+    container_name: ollama
+    ports:
+      - "11434:11434"                       # OpenAI-compatible API on the host
+    volumes:
+      - ollama-models:/root/.ollama         # NAMED VOLUME: model weights survive rm + re-up
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  verse-api:
+    build: .                                # builds THIS folder's Dockerfile
+    container_name: verse-api
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434      # reach the backend by SERVICE NAME (not localhost)
+      - MODEL=llama3.2:3b
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "3000:8080"                          # chat UI at http://localhost:3000
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434  # talks to the backend by service name too
+      - WEBUI_AUTH=true                      # require a login (RBAC); never false when shared
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  ollama-models:       # holds the downloaded model weights
+  open-webui-data:     # holds UI accounts/settings
