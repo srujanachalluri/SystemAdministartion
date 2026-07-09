@@ -1,0 +1,99 @@
+# partition-nvidia-smi.txt — SIMULATED capture of Concordia Lakes' partitioned H100 80GB.
+# Project 6 — "Carve the GPU".
+#
+# HONESTY DISCLOSURE: Concordia's IT department owns no data-center GPU accessible to me,
+# so this is a SIMULATED substrate, hand-built in the format of the Ch.6 sample-nvidia-smi.txt
+# and validated against the H100 MIG profile table (max 7 slices). This is a well-reasoned
+# simulation, not a claim that I ran it on live silicon. See REPORT.docx.
+#
+# OUR LAYOUT: one 2g.20gb + three 1g.10gb = 5 slices used, 2 held in reserve.
+#   GI 5  = 2g.20gb  -> CS 8B chat assistant       (~18 GB loaded)
+#   GI 13 = 1g.10gb  -> Registrar 1B classifier    (FERPA — hardware-isolated)
+#   GI 14 = 1g.10gb  -> Library embedding model     (~3 GB loaded)
+#   GI 15 = 1g.10gb  -> Research student notebook   (time-sliced; idle here)
+
+# ---- Step 1: MIG enabled on the idle card ----
+$ sudo nvidia-smi -i 0 -mig 1
+Enabled MIG Mode for GPU 00000000:17:00.0
+All done.
+
+# ---- Step 2: profile table (-lgip), confirming the IDs we carve with ----
+$ sudo nvidia-smi mig -i 0 -lgip
++-----------------------------------------------------------------------------+
+| GPU instance profiles:                                                      |
+| GPU   Name             ID    Instances   Memory     P2P    SM    DEC   ENC  |
+|                              Free/Total   GiB              CE    JPEG  OFA  |
+|=============================================================================|
+|   0  MIG 1g.10gb        19     7/7        9.75       No     14    1     0   |
+|   0  MIG 1g.10gb+me     20     1/1        9.75       No     14    1     0   |
+|   0  MIG 2g.20gb        14     3/3        19.50      No     28    2     0   |
+|   0  MIG 3g.40gb         9     2/2        39.25      No     42    3     0   |
+|   0  MIG 4g.40gb         5     1/1        39.25      No     56    4     0   |
+|   0  MIG 7g.80gb         0     1/1        79.00      No     98    7     0   |
++-----------------------------------------------------------------------------+
+
+# ---- Step 3: create the partition (one 2g.20gb + three 1g.10gb) ----
+$ sudo nvidia-smi mig -i 0 -cgi 14,19,19,19 -C
+Successfully created GPU instance ID  5 on GPU  0 using profile MIG 2g.20gb (ID 14)
+Successfully created compute instance ID  0 on GPU  0 GPU instance ID  5 using profile MIG 2g.20gb (ID  1)
+Successfully created GPU instance ID 13 on GPU  0 using profile MIG 1g.10gb (ID 19)
+Successfully created compute instance ID  0 on GPU  0 GPU instance ID 13 using profile MIG 1g.10gb (ID  0)
+Successfully created GPU instance ID 14 on GPU  0 using profile MIG 1g.10gb (ID 19)
+Successfully created compute instance ID  0 on GPU  0 GPU instance ID 14 using profile MIG 1g.10gb (ID  0)
+Successfully created GPU instance ID 15 on GPU  0 using profile MIG 1g.10gb (ID 19)
+Successfully created compute instance ID  0 on GPU  0 GPU instance ID 15 using profile MIG 1g.10gb (ID  0)
+
+# ---- Step 4: list instances (-lgi): 5 slices used, 2 slices (one 1g.10gb pair worth) free ----
+$ sudo nvidia-smi mig -i 0 -lgi
++-------------------------------------------------------+
+| GPU instances:                                        |
+| GPU   Name          Profile  Instance   Placement     |
+|                       ID       ID       Start:Size    |
+|=======================================================|
+|   0  MIG 2g.20gb       14        5          0:2        |
+|   0  MIG 1g.10gb       19       13          2:1        |
+|   0  MIG 1g.10gb       19       14          3:1        |
+|   0  MIG 1g.10gb       19       15          4:1        |
++-------------------------------------------------------+
+# Placement Start:Size shows the slice budget directly: 2 + 1 + 1 + 1 = 5 of 7. Slots 5-6 free.
+
+# ---- Step 5: the addressable MIG-UUIDs to pin workloads to ----
+$ nvidia-smi -L
+GPU 0: NVIDIA H100 80GB HBM3 (UUID: GPU-abc12345-0000-0000-0000-000000000000)
+  MIG 2g.20gb  Device 0: (UUID: MIG-11111111-1111-1111-1111-1111cs8bchat0)
+  MIG 1g.10gb  Device 1: (UUID: MIG-22222222-2222-2222-2222-22registrar00)   <- FERPA slice
+  MIG 1g.10gb  Device 2: (UUID: MIG-33333333-3333-3333-3333-333library000)
+  MIG 1g.10gb  Device 3: (UUID: MIG-44444444-4444-4444-4444-44research000)
+
+# ---- Step 6: full nvidia-smi with a model loaded on each populated slice ----
+$ nvidia-smi
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.xx              Driver Version: 575.xx        CUDA Version: 12.x          |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+|                                         |        Memory-Usage    |       MIG M.         |
+|=========================================+========================+======================|
+|   0  NVIDIA H100 80GB HBM3   On         | 00000000:17:00.0 Off   |     On   / Enabled   |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| MIG devices:                                                                            |
++------------------+----------------------+-----------+-----------------------------------+
+| GPU  GI  CI  MIG |         Memory-Usage |        Vol|  Tenant                           |
+|      ID  ID  Dev |           BAR1-Usage | SM     Unc|                                   |
+|==================+======================+===========+===================================|
+|  0    5   0   0  |  18100MiB / 19968MiB | 28      0 |  CS 8B chat (2g.20gb)             |
++------------------+----------------------+-----------+-----------------------------------+
+|  0   13   0   1  |   2600MiB /  9984MiB | 14      0 |  Registrar 1B classifier (FERPA) |
++------------------+----------------------+-----------+-----------------------------------+
+|  0   14   0   2  |   2900MiB /  9984MiB | 14      0 |  Library embedding               |
++------------------+----------------------+-----------+-----------------------------------+
+|  0   15   0   3  |    300MiB /  9984MiB | 14      0 |  Research notebook (idle)         |
++------------------+----------------------+-----------+-----------------------------------+
+
+# Read it:
+#  - GI 5 (CS) is using 18100 / 19968 MiB — the 8B model at ~18 GB lands in the 2g.20gb slice
+#    with ~1.8 GB (~9%) headroom. It would NOT have fit a 1g.10gb (see isolation-proof.txt OOM).
+#  - GI 13 (registrar) has its OWN 9984 MiB memory column. It cannot see GI 14's or GI 5's memory.
+#    That separate column IS the hardware isolation FERPA requires.
+#  - Slice budget: 2 + 1 + 1 + 1 = 5 of 7. Two slices remain for growth.

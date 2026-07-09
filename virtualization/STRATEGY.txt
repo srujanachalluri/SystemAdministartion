@@ -1,0 +1,113 @@
+=============================================================================
+STRATEGY.txt — GPU Sharing Strategy for Concordia Lakes University (Hard Tier)
+Project 6 — "Carve the GPU"  |  Author: (student)  |  One H100 80GB, four tenants
+=============================================================================
+
+PART 1 — THE ESTATE DECISION (recommended sharing strategy for all four tenants)
+-----------------------------------------------------------------------------
+The estate today is a SINGLE H100 80GB. Across the full menu of sharing modes,
+here is where each tenant lands and why:
+
+  Tenant              Mode            Slice/where           Why this mode (the tradeoff)
+  ------------------  --------------  --------------------  ---------------------------------
+  Registrar (FERPA)   MIG             1g.10gb, dedicated    Only MIG gives a HARDWARE fault +
+                                                            memory wall. Non-negotiable: FERPA
+                                                            data cannot share a fault domain.
+  CS 8B chat          MIG             2g.20gb               Needs ~18 GB; a 1g.10gb OOMs. MIG
+                                                            also walls it off from the FERPA slice.
+  Library embedding   MIG             1g.10gb, dedicated    ~3 GB; cheap, isolated, simple.
+  Research notebook   time-slicing    on a shared 1g.10gb   Bursty, no isolation need. Oversubscribe
+                                      burst pool            the cheapest slice; do not reserve HW.
+
+  Slice budget: 2 + 1 + 1 + 1 = 5 of 7. Two 1g-equivalent slices held in reserve.
+
+Modes considered and REJECTED for this estate, with the tradeoff argued:
+  - passthrough (whole card to one VM): rejected — four tenants must coexist; one owner
+    wastes 75% of a scarce asset. Reserve it for a future dedicated training box.
+  - vGPU: rejected — requires NVIDIA vGPU LICENSING (real recurring cost) and full VMs.
+    Our tenants are containers/processes, not VDI desktops. Licensing spend unjustified.
+  - MPS: rejected for the registrar and as the primary mode — MPS gives only SOFT
+    caps and shares a fault domain; one fatal fault can reset the GPU for all clients.
+    That is disqualifying for FERPA data. (MPS could later help CS pack more cooperative
+    inference procs INSIDE its 2g.20gb slice — a within-slice optimization, not an estate mode.)
+  - time-slicing for anyone but research: rejected — it is oversubscription with NO memory
+    or fault isolation. It is a SHADOW of isolation, not the substance. Fine for a bursty
+    dev notebook; a FERPA violation for the registrar.
+
+PART 2 — THE GROWTH QUESTION
+-----------------------------------------------------------------------------
+What the partition does under two likely futures:
+
+(a) A SECOND H100 arrives.
+    - The two reserve slices already absorb near-term growth on card #1. With a second
+      card, the clean move is to keep the FERPA registrar on card #1's dedicated MIG slice
+      and migrate the bursty/dev + library load to card #2, freeing card #1 toward the
+      CS service. LIVE-MIGRATION CAVEAT: MIG-backed and passthrough workloads are NOT
+      live-migratable (no vMotion of a physical slice); plan a brief drain/restart window.
+      vGPU is the only mode here that supports live migration — a point in its favor IF
+      Concordia ever needs zero-downtime moves, at the cost of licensing.
+
+(b) A researcher needs a FULL-CARD training run.
+    - MIG must be DISABLED to reclaim the whole 80 GB as one device (toggling MIG resets
+      the card — drain first). That means tearing down the partition and displacing the
+      four tenants for the duration. The tradeoff: schedule full-card training in a
+      maintenance window, OR (better, once card #2 exists) dedicate card #2 via passthrough
+      to training and never disturb the FERPA slice on card #1.
+    - Cost of idle capacity: our 2 reserve slices are deliberate "idle" insurance so we are
+      not re-carving the card every time load nudges up. That idle capacity is cheaper than
+      an unplanned FERPA-slice migration.
+
+=============================================================================
+PART 3 — THE AI CRITIQUE (the graded judgment; AI Policy Phase 1: allowed here only)
+=============================================================================
+Per the assignment's AI policy, AI is OFF for building the lab and ON for exactly one
+thing: ask an AI to design the placement, then dismantle its answer. Below is the logged
+exchange. The HUMAN owns every verdict.
+
+--- PROMPT GIVEN TO THE AI ASSISTANT -------------------------------------------------
+"We have one NVIDIA H100 80GB and four tenants: a CS 8B FP16 chat assistant (~18 GB),
+ a library embedding model (~3 GB), a registrar 1B classifier over FERPA-protected
+ student records that must be isolated, and a research student who wants a bursty
+ notebook a few hours a week. Design the MIG/sharing placement."
+
+--- THE AI ASSISTANT'S DRAFT PLACEMENT (verbatim) ------------------------------------
+"Here's an efficient layout:
+   1. CS 8B chat  -> one 1g.10gb slice. 8B is small, 10 GB is plenty.
+   2. Registrar   -> time-slice it onto the CS slice. Each gets its own time window, so
+                     they're isolated from each other and you save a whole slice.
+   3. Library     -> a 3g.40gb slice, so it has room to grow.
+   4. Research    -> a dedicated 2g.20gb slice reserved just for them.
+ Total: 1 + 3 + 2 = 6 slices, under the 7 ceiling. Clean and efficient."
+
+--- THE HUMAN CRITIQUE (dismantling it) ----------------------------------------------
+The AI's answer is confidently wrong in three ways. I did NOT ship it.
+
+FLAW 1 (DISQUALIFYING — the graded one): "time-slice the registrar onto the CS slice...
+  they're isolated because each gets its own time window."  This conflates a SHADOW of
+  isolation (time-slicing) with the SUBSTANCE (hardware isolation). Time-slicing shares
+  the SAME VRAM and the SAME fault domain — the registrar's FERPA data would sit in memory
+  reachable by the CS workload, and one OOM would reset both. This is a FERPA violation
+  dressed up as efficiency. The registrar MUST be on its OWN dedicated MIG instance. This
+  single error fails the entire scenario no matter how tidy the rest looks.
+
+FLAW 2 (OOM — weights-only math): CS 8B on a 1g.10gb. FP16 weights alone are 16 GB; real
+  VRAM with KV cache + CUDA context is ~18 GB. A 1g.10gb is a hard 9.75 GB wall — the model
+  OOMs at load (proven in isolation-proof.txt (B)). MIG does not conjure the missing memory.
+  CS needs a 2g.20gb. The AI sized to parameter count, not to real VRAM.
+
+FLAW 3 (budget waste, inverted priorities): the AI hands the low-risk LIBRARY a 3g.40gb
+  (40 GB for a 3 GB model) and RESERVES a 2g.20gb for a few-hours-a-week research notebook,
+  while STARVING the CS service and ENDANGERING the registrar. It spends the slice budget on
+  exactly the two tenants that need it least. Right-sizing (vram_math.py) puts library on
+  1g.10gb and time-slices research onto a shared 1g.10gb.
+
+Could I have caught these without running anything? Yes — the tells are: (a) "isolated
+because time window" is the exact shadow/substance error the chapter warns about; (b) any
+FP16 8B model is >=16 GB before overhead, so a 10 GB slice is impossible on its face; (c) a
+3 GB model in a 40 GB slice is self-evidently mis-prioritized. The AI is a fast partner, not
+a trustworthy one.
+
+--- ONE-LINE RUNBOOK FOR THE NEXT ADMIN ----------------------------------------------
+The registrar's FERPA classifier runs on its OWN dedicated 1g.10gb MIG instance because
+protected data requires HARDWARE fault isolation, which time-slicing and MPS only imitate —
+never move it onto a time-sliced or shared slice to reclaim capacity, no matter who asks.

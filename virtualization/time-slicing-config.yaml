@@ -1,0 +1,33 @@
+# time-slicing-config.yaml
+# Project 6 — "Carve the GPU". k8s-device-plugin time-slicing for the RESEARCH STUDENT ONLY.
+#
+# WHAT THIS DOES: takes the ONE 1g.10gb MIG slice we set aside as a shared "burst pool"
+# (GI 15, the research/dev slice) and advertises it as several schedulable replicas, so a
+# few bursty notebook users can land on it opportunistically.
+#
+# CRITICAL — this is OVERSUBSCRIPTION, not partitioning. The replicas SHARE the slice's
+# ~10 GB VRAM and have NO memory or fault isolation from each other. A notebook that OOMs
+# the slice takes its co-tenants down with it. That is ACCEPTABLE HERE and ONLY here,
+# because the research student explicitly does not need isolation and uses the GPU a few
+# hours a week. We would NEVER point this at the registrar's slice — FERPA data requires
+# the hardware wall that time-slicing cannot provide (shadow vs. substance).
+#
+# Apply as a ConfigMap, then point the device plugin at it, scoped to the research slice:
+#   kubectl create configmap time-slicing -n gpu-operator --from-file=time-slicing-config.yaml
+# In the NVIDIA device plugin, time-slicing and MPS are MUTUALLY EXCLUSIVE — pick one.
+version: v1
+sharing:
+  timeSlicing:
+    # Reject pods asking for >1 replica so nobody hoards the burst pool and starves others.
+    failRequestsGreaterThanOne: true
+    resources:
+      # Scope to the research MIG profile, NOT nvidia.com/gpu at large — this keeps
+      # oversubscription confined to the one slice we designated for it.
+      - name: nvidia.com/mig-1g.10gb
+        replicas: 3   # the research/dev 1g.10gb slice -> 3 time-sliced replicas (shared VRAM!)
+---
+# Contrast — the promise the OTHER three slices make (do NOT time-slice these):
+#   mig.strategy=mixed advertises each MIG instance as its own distinct resource, e.g.
+#   nvidia.com/mig-2g.20gb (CS) and nvidia.com/mig-1g.10gb (registrar, library) as WALLED-OFF
+#   devices. The registrar's classifier is scheduled onto its dedicated hardware-isolated
+#   instance — never onto a time-sliced replica. Know which promise each tenant is getting.

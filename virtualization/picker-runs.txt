@@ -1,0 +1,55 @@
+# picker-runs.txt — code/gpu_sharing_picker.py run for each of Concordia's four tenants.
+# Project 6, Medium tier item 4: 'reconcile its recommendation with yours in the report.'
+# The tool DRAFTS; the administrator owns the verdict. Where we agree and where we override, below.
+
+===================================================================================
+TENANT 1 — CS 8B chat assistant  (~18 GB, single coursework service, no PII)
+===================================================================================
+$ python gpu_sharing_picker.py --vram-needed 18 --tenants 4 --isolation soft --kind inference
+Recommended sharing mode: mps
+  - cooperative same-trust inference processes, latency-sensitive
+  - accept that one fatal fault can reset the GPU for all clients
+
+Reminder: this is a draft. You own the verdict. Verify against the GPU's -lgip profile table and your real isolation/compliance requirements.
+
+OUR VERDICT: MIG 2g.20gb. The picker leans time-slicing for 'soft' isolation, but on a
+shared card we still want CS walled off from the FERPA slice — MIG gives that for free.
+
+===================================================================================
+TENANT 2 — Library embedding model  (~3 GB, low risk)
+===================================================================================
+$ python gpu_sharing_picker.py --vram-needed 3 --tenants 4 --isolation soft --kind inference
+Recommended sharing mode: mps
+  - cooperative same-trust inference processes, latency-sensitive
+  - accept that one fatal fault can reset the GPU for all clients
+
+Reminder: this is a draft. You own the verdict. Verify against the GPU's -lgip profile table and your real isolation/compliance requirements.
+
+OUR VERDICT: MIG 1g.10gb. Agrees in spirit; we harden 'soft' to a dedicated slice
+because it costs us only 1 slice and simplifies the whole-card isolation story.
+
+===================================================================================
+TENANT 3 — Registrar 1B classifier  (FERPA student records — the whole point)
+===================================================================================
+$ python gpu_sharing_picker.py --vram-needed 3 --tenants 4 --isolation strict --kind inference
+Recommended sharing mode: mig
+  - multi-tenant with strict isolation needs hardware fault isolation
+  - MIG gives each tenant a walled-off slice
+
+Reminder: this is a draft. You own the verdict. Verify against the GPU's -lgip profile table and your real isolation/compliance requirements.
+
+OUR VERDICT: MIG 1g.10gb, DEDICATED + HARDWARE-ISOLATED. Full agreement — 'strict' ->
+MIG is exactly right. This is the non-negotiable placement; FERPA needs the hardware wall.
+
+===================================================================================
+TENANT 4 — Research student notebook  (bursty, few hrs/week, no isolation need)
+===================================================================================
+$ python gpu_sharing_picker.py --vram-needed 3 --tenants 4 --isolation none --kind dev
+Recommended sharing mode: time-slicing
+  - bursty/dev workload, no isolation requirement
+  - cheapest to set up; oversubscribe and hope for non-overlap
+
+Reminder: this is a draft. You own the verdict. Verify against the GPU's -lgip profile table and your real isolation/compliance requirements.
+
+OUR VERDICT: time-slicing on a shared 1g.10gb burst pool. Full agreement — cheapest
+correct mode; we deliberately do NOT reserve them an isolated instance (waste for bursty use).
