@@ -1,0 +1,29 @@
+==============================================================================
+PER-HOST BASELINE PROFILE  (anchor to 'normal' before judging anything)
+==============================================================================
+  10.20.4.31    p95_out=6.3KB    mean_out=2.1KB    dsts=['10.20.4.10', '140.82.112.3', '151.101.0.223'] ports=[53, 123, 443]
+  10.20.4.45    p95_out=2.4KB    mean_out=1.2KB    dsts=['10.20.4.10', '10.20.4.20'] ports=[53, 443, 5432]
+  10.20.4.62    p95_out=918B     mean_out=905B     dsts=['10.20.4.50', '10.20.4.51'] ports=[8080]
+  10.20.4.77    p95_out=1.7KB    mean_out=1.7KB    dsts=['10.20.4.20'] ports=[443]
+
+==============================================================================
+FINDINGS  (3 candidate anomalies -- a human confirms each)
+==============================================================================
+
+  [1] BEACONING  host=10.20.4.62  peer=203.0.113.77:8443
+      WHY: contacted 203.0.113.77:8443 (external) 4 times every ~300s (interval jitter 0%, payload 512B +/-0B). This destination is NOT in the host's baseline -- the host normally only talks to ['10.20.4.50', '10.20.4.51']. Fixed-interval, fixed-size traffic to a novel public host is the signature of an automated beacon (C2 check-in).
+
+  [2] PORT_SCAN  host=10.20.4.77  peer=6 hosts
+      WHY: fanned out to 6 distinct hosts on admin ports [22, 445, 3389] in 1s. Baseline shows this host only ever used port(s) [443] to 1 destination(s); ports [22, 445, 3389] are brand new for it.
+
+  [3] EXFIL      host=10.20.4.45  peer=198.51.100.42:443
+      WHY: sent 1.8GB outbound in one flow to 198.51.100.42 (external) -- 759,104x this host's baseline p95 of 2.4KB. No baseline flow from this host ever approached this volume.
+
+==============================================================================
+FALSE-POSITIVE SWEEP  (why the baseline's periodic public jobs are safe)
+==============================================================================
+  - 10.20.4.31 -> 140.82.112.3:443 ("git-pull-business-hours-ok"): public + periodic, BUT this destination IS in 10.20.4.31's baseline, so it is known-good business traffic. Suppressed by behavior (known destination), not by IP allow-listing.
+  - 10.20.4.31 -> 151.101.0.223:443 ("pkg-mirror-update"): public + periodic, BUT this destination IS in 10.20.4.31's baseline, so it is known-good business traffic. Suppressed by behavior (known destination), not by IP allow-listing.
+
+------------------------------------------------------------------------------
+3 candidate(s) reported. Every block is a human decision. -- the watchman

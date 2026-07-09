@@ -1,0 +1,39 @@
+AI_USAGE.txt
+Project 5 - Read the Traffic
+Author: Srujana Challuri
+
+AI policy for this chapter (Phase 1): an AI copilot is allowed, but the
+traditional analysis must be done first/also, and this file must honestly state
+what was delegated and what was verified by hand. The human owns every verdict
+in the report.
+
+WHAT I DELEGATED TO AN AI COPILOT
+---------------------------------
+- Scaffolding of watchman.py (function structure, argument parsing, byte-
+  formatting helper) starting from the instructor's flow_baseline.py reference.
+- Wording help on REPORT.docx and MEMO.docx, especially compressing the memo
+  into plain language a non-engineer director can act on.
+- Drafting of this README/AI_USAGE structure.
+
+WHAT I DID AND VERIFIED BY HAND
+-------------------------------
+- I read window_flows.csv and baseline_flows.csv line by line myself and
+  identified the three anomalies by eye BEFORE trusting any detector:
+    * 10.20.4.62 -> 203.0.113.77:8443 repeating every 5 minutes (beaconing)
+    * 10.20.4.77 hitting six hosts on ports 22/3389/445 in one second (scan)
+    * 10.20.4.45 sending 1,887,436,800 bytes to 198.51.100.42 (exfil)
+- I confirmed each detector finding against the raw CSV rows, and checked the
+  math on the baseline profile (p95 outbound, known destinations, known ports)
+  by hand for all four hosts.
+- I decided the false-positive reasoning myself: the git-pull and package-mirror
+  flows are periodic and public but appear in the host's own baseline, so they
+  are behaviorally known-good. I did NOT suppress them by special-casing IPs.
+- I made the final verdict and the recommended order of response in the report
+  and memo. The AI did not decide what is malicious; I did.
+
+WHAT I EXPLICITLY DID NOT LET THE AI DO
+---------------------------------------
+- I did not accept any flag the AI could not tie back to a concrete baseline
+  deviation I could see in the data.
+- I did not let the AI pick detection thresholds without me checking that each
+  one still made sense against this specific host baseline.
