@@ -1,0 +1,19 @@
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
