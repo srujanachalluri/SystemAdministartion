@@ -1,0 +1,26 @@
+# Scrape config for the Week 9 teaching stack.
+# Prometheus pulls metrics on an interval (the "pull model"): targets expose
+# /metrics, Prometheus scrapes them. Contrast with logs, which are pushed/shipped.
+global:
+  scrape_interval: 15s        # how often we sample every target
+  evaluation_interval: 15s    # how often alerting/recording rules run
+
+scrape_configs:
+  # Prometheus scraping itself — the cheapest possible first target.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Your inference service. vLLM and many serving engines expose a Prometheus
+  # endpoint with token throughput, queue depth, and TTFT out of the box.
+  - job_name: inference
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+        labels: { tier: "ai", team: "platform" }
+
+  # nvidia dcgm-exporter publishes per-GPU utilization, memory, temp, power.
+  - job_name: gpu
+    static_configs:
+      - targets: ["host.docker.internal:9400"]
+        labels: { tier: "ai", team: "platform" }

@@ -1,0 +1,76 @@
+===============================================================================
+keeping-watch.txt  —  Incident Verdict
+Project 9: Ask Your Logs  |  Cornerstone Faith Resources storefront
+Incident: 2026-06-12, ~14:05 UTC, ~90-second checkout outage
+===============================================================================
+
+THE INCIDENT IN ONE LINE
+------------------------
+For about 90 seconds starting at 14:05, checkout aborted for three customers
+because the upstream payment provider (stripe) timed out (HTTP 504, ~5s
+latency). Checkout was the SYMPTOM; the payment-provider timeout was the ROOT
+CAUSE. The system recovered on its own by 14:07.
+
+Correlation signal: trace_id. Each "checkout aborted" line shares its trace_id
+with a "payments authorize failed" line, which is how we prove the checkout
+failures were downstream of the payment timeouts and not an independent bug.
+
+Affected users: u-4419 (d4e1), u-4420 (e2a8), u-4422 (aa01).
+
+
+VERDICT — DID THE AI'S QUERY MATCH MINE?
+-----------------------------------------
+For each question I compare the filter I wrote by hand (against OpenSearch) to
+the filter ask_logs.py's model generated and printed. AI proposes; I verify.
+
+QUESTION 1 — "Why did checkout fail at 14:05?"
+  My by-hand query : level = ERROR  AND  ts in [14:05:00, 14:06:00)
+  AI's printed filter: [PASTE the "# AI-generated filter" line from your
+                        ask_logs.py Q1 run here, e.g. {'ts_prefix':
+                        '2026-06-12T14:05', 'contains': 'checkout'}]
+  Match?  Roughly yes on the time window. Difference: the AI filters on a text
+  "contains"/ts_prefix over the raw file, while my OpenSearch query filters on
+  the structured `level` and `ts` fields. The AI surfaces the same 14:05 error
+  lines, BUT it does not by itself tell me that PAYMENTS is the cause and
+  CHECKOUT is only the symptom — I had to read the lines and follow the
+  trace_id to establish that. If I had trusted the AI's answer alone, I could
+  have "fixed" checkout and never touched the real problem.
+
+QUESTION 2 — "Which users were affected?"
+  My by-hand query : service = checkout AND level = ERROR  -> read `user` field
+  AI's printed filter: [PASTE the AI filter from your Q2 run here]
+  Match?  Close. The AI can narrow to the checkout error lines, but the actual
+  ANSWER (the list u-4419 / u-4420 / u-4422) still comes from me reading the
+  `user` field off each matching line. The AI found the rows; a human named the
+  users.
+
+QUESTION 3 — "What was the root cause vs the symptom?"
+  My by-hand query : trace_id = d4e1  (then sort by ts, read both services)
+  AI's printed filter: [PASTE the AI filter from your Q3 run here]
+  Match?  This is where they diverge most. My query correlates by trace_id
+  across services and shows payments-timeout -> checkout-abort in time order.
+  The AI's flat "contains"/level filter has no notion of correlation, so it
+  cannot, on its own, separate cause from symptom. Root cause vs. symptom is a
+  judgment I made from the evidence, not something the filter returned.
+
+
+WOULD I HAVE SHIPPED A FIX ON THE AI'S ANSWER ALONE?
+-----------------------------------------------------
+No. The AI is a fast intern that finds relevant lines quickly, and for Q1/Q2
+its filter overlapped with mine. But for the question that actually matters —
+what do we fix? — the AI's filter pointed at the checkout errors, which is the
+symptom. Shipping a "checkout fix" would have wasted a sprint while the real
+fault (payment-provider timeout / missing retry + timeout budget) stayed live.
+I verified every generated filter against the raw lines and used trace_id
+correlation to reach the root cause myself. That verification step is the job.
+
+
+WHAT I WOULD ACTUALLY DO NEXT (the fix the evidence points to)
+--------------------------------------------------------------
+- Treat the payment provider as the failure domain: add a sane timeout budget
+  and a retry/circuit-breaker around the stripe authorize call, and alert on
+  provider latency (the 14:04 WARN "provider latency high 2710ms" was the early
+  warning we ignored).
+- Alert on the SYMPTOM's burn rate (checkout error ratio), not on a raw error
+  count, so one blip does not page anyone but a real budget-burning event does.
+- Keep the trace_id on every line so the next on-call can ask instead of grep.

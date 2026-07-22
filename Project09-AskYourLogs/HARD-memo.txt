@@ -1,0 +1,65 @@
+===============================================================================
+MEMO
+To:      IT Director, Cornerstone Faith Resources
+From:    On-call Systems Engineer
+Re:      Where We Let the Agent Act — and Where We Don't
+Date:    2026-06-12
+===============================================================================
+
+We now have observability that lets on-call ASK the logs instead of grepping
+them at midnight. The next question is how much we let an AIOps agent DO on its
+own. Here is my recommendation. It is a ladder, not a switch.
+
+THE AUTONOMY LADDER
+-------------------
+1. ACT AUTONOMOUSLY (read-only, reversible):
+   - Summarize an alert episode, cluster duplicate alerts into one incident,
+     and correlate by trace_id (exactly the 14:05 case: three "checkout"
+     failures were one payment-provider timeout).
+   - Draft the incident timeline and propose the likely root cause.
+   These are safe because they change nothing. Worst case is a wrong summary,
+   which a human reads before acting.
+
+2. ACT WITH HUMAN APPROVAL (state-changing but bounded):
+   - Restart a stuck service, drain a node, roll back a deploy, open a ticket
+     to the payment provider, flip a feature flag.
+   The agent may PREPARE and RECOMMEND these; a human clicks the button. A
+   confidently wrong agent that restarts the wrong service turns a 90-second
+   blip into an outage.
+
+3. NEVER UNATTENDED (expensive or hard to reverse):
+   - Scaling down the GPU inference node, changing the payment provider config,
+     or anything that touches money, customer data, or the most expensive box
+     in the rack. The GPU at 97% utilization with KV-cache pressure is not
+     automatically "idle" — pair it with TTFT and queue depth before ANY
+     scale decision, and keep that decision human.
+
+WHY THIS LINE
+-------------
+The 14:05 incident is the argument. An agent doing a fast first pass is
+genuinely useful — it found the 14:05 error lines in seconds. But the filter it
+generates cannot correlate across services or separate cause from symptom; it
+pointed at checkout (the symptom) and had no signal that payments (the cause)
+timed out upstream. If we had let it "fix" what it flagged, we would have spent
+a sprint on checkout while the real fault stayed live. The agent is a very fast
+intern. We supervise interns.
+
+FINOPS NOTE
+-----------
+Autonomy has a bill. When an agent investigates an alert storm, each delegated
+step is tokens, and vendor SRE-agent pricing in 2026 (Datadog Bits AI, New
+Relic, Azure SRE Agent's AAU/AAC billing) charges per action/investigation —
+so an alert storm that fans out into hundreds of agent calls can run up spend
+faster than the incident itself costs. Two controls: (1) cap agent actions per
+incident and per hour, and (2) keep the expensive, irreversible actions (GPU
+scale-down, provider changes) behind a human, where the cost of being wrong is
+highest. Cheap-and-reversible: let it run. Expensive-or-irreversible: it may
+recommend, a human decides.
+
+RECOMMENDATION
+--------------
+Adopt the three-rung ladder above now: autonomous read-only triage, approval
+for bounded state changes, and a hard human gate on GPU/payment/cost actions.
+The agent may draft the recommendation on any incident — but a human approves
+the state-changing ones, and I am accountable for that line. That is the job,
+and I am standing behind it.
