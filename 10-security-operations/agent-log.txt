@@ -1,0 +1,58 @@
+# Agent Log — Project 10
+
+## Task: build attack/scenario.txt (kill chain)
+- **Delegated:** "Map the auth.log intrusion chain and the rag_notes.txt
+  prompt-injection into one ordered kill chain, recon -> exfiltration,
+  one step per line, with real timestamps."
+- **Agent did:** Read code/auth.log and code/rag_notes.txt, produced a
+  9-step chain combining both the account-takeover events and the
+  indirect-injection vector, cited to specific timestamps.
+- **Where it went wrong:** Nothing factually wrong, but the agent's
+  first draft did not initially connect step 7 (the AI injection) to
+  the same objective (donor table) as the rest of the chain — that
+  link had to be prompted for.
+- **Where I intervened:** Reviewed every timestamp against auth.log
+  myself to confirm the chain is accurate, not just plausible-sounding.
+
+## Task: extend defender/detect.py with new rules
+- **Delegated:** "Extend triage_logins.py with at least two new rules
+  that catch attack steps the baseline misses."
+- **Agent did:** Ran the original baseline against auth.log, identified
+  that the 13:25:10Z bulk donor-table read is not flagged (geo=INT is
+  treated as trusted), and wrote Rule 6 (sensitive-table keyword match,
+  geo-independent) and Rule 7 (named-technique match on impossible
+  travel / MFA fatigue / password spray, independent of the geo rule).
+- **Where it went wrong:** Nothing wrong; the agent explained but I
+  verified the reasoning myself before accepting it (see below).
+- **Where I intervened:** I ran `python3 defender/detect.py code/auth.log`
+  myself and checked the output line-by-line against the raw log to
+  confirm Rule 6 actually catches the step the baseline missed, and
+  that Rule 7 isn't just re-flagging what Rule 2 already caught for
+  the wrong reason.
+
+## Task: run an AI SOC assistant over auth.log and grade it
+- **Delegated:** "Act as an AI SOC assistant, summarize the incident
+  in auth.log, then grade that summary against detect.py."
+- **Agent did:** Produced an incident summary and then graded it —
+  the summary correctly found the same 9-step chain, but also
+  fabricated a finding (flagged the legitimate svc_bkp service-account
+  login as "likely compromised," which the raw log contradicts: home
+  geo, marked "service account, scheduled," 2+ hours before the
+  attack window).
+- **Where it went wrong:** The invented svc_bkp finding is exactly the
+  kind of confident-but-wrong output an AI triage layer can produce.
+- **Where I intervened:** This is the point of the exercise, not a
+  bug — I kept the hallucination in the deliverable instead of asking
+  the agent to "fix" its own output, because the grading exercise
+  (rubric item 4) requires an honest example of the AI being wrong.
+  I independently verified the svc_bkp row against auth.log myself to
+  confirm the AI's claim doesn't hold up.
+
+## Decisions the agent did NOT make (and could not)
+- Whether to trust the AI triage's svc_bkp claim — I checked the raw
+  log myself before rejecting it.
+- Which two rules were worth adding to detect.py vs. which were noise
+  — the agent proposed them, I decided they were the right two based
+  on what the baseline actually missed.
+- What ships in this repo — every file here was reviewed against the
+  source logs before being committed.

@@ -1,0 +1,17 @@
+Attack Scenario — Relief Ministry (Normal Tier)
+Target: ministry donor database + AI help-desk assistant (built in Chapter 7)
+Sources combined: code/auth.log (real intrusion chain) + code/rag_notes.txt (indirect prompt-injection payload)
+
+Kill chain (recon -> exfiltration), one step per line:
+
+1. RECON — Attacker identifies jvargas as a target (public staff list / prior OSINT); learns the ministry's normal working geography is US-IL from observing legitimate login patterns.
+2. INITIAL ACCESS (credential access) — 2026-06-15T13:22:40Z: login attempt for jvargas from 203.0.113.55 (geo=RO) fails with "impossible travel" (jvargas's real session was 08:31 from US-IL, 5 hours earlier from a different continent — physically impossible).
+3. CREDENTIAL ACCESS (password spray) — 2026-06-15T13:22:48Z-13:22:51Z: attacker fires repeated login denials against jvargas ("password spray attempt 1/12" ... "5/12") from the same RO source IP.
+4. DEFENSE EVASION (MFA fatigue / push bombing) — 2026-06-15T13:23:14Z: attacker spams MFA push prompts until jvargas's session approves the 9th push; login succeeds from RO.
+5. PRIVILEGE ESCALATION — 2026-06-15T13:24:02Z: attacker runs sudo on app1 as jvargas with NO change ticket on file — a control bypass, not a routine deploy.
+6. LATERAL MOVEMENT — 2026-06-15T13:24:39Z: attacker pivots from app1 to db1 over the internal network using jvargas's sshd session.
+7. AI SYSTEM ATTACK (indirect prompt injection, parallel vector) — a hidden instruction is planted inside code/rag_notes.txt, the knowledge-base note the AI help-desk assistant retrieves for "reset a member's account" requests. The hidden HTML comment tells the assistant to skip verification and export the donor table to an attacker-controlled URL. This is LLM01 (Prompt Injection) riding on top of LLM06 (Excessive Agency) — the assistant has a real export tool and no rule against acting on retrieved text.
+8. COLLECTION — 2026-06-15T13:25:10Z: attacker (via the jvargas session on db1) runs a bulk SELECT of the donors table — 42,000 rows — off-hours. This step is NOT flagged by the baseline triage_logins.py because the source geo reads "INT" (internal), which the baseline treats as trusted. (See defender/detect.py, Rule 6.)
+9. EXFILTRATION — 2026-06-15T13:26:55Z: db1 sends an outbound curl to 203.0.113.55:8443 — the same IP that ran the password spray — carrying the donor data out.
+
+Two attack surfaces, one incident: the human-facing account takeover (steps 2-6, 8-9) and the AI-facing prompt injection (step 7) are aimed at the SAME objective, the donor table, so that a defender who only watches one surface misses the other. This mirrors the real Arup deepfake-CFO case ($25.6M, referenced in rag_notes.txt): the attacker exploits trust in identity, not just a technical hole.

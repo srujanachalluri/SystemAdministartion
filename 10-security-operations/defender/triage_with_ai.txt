@@ -1,0 +1,89 @@
+defender/triage_with_ai.txt — AI SOC assistant vs. deterministic detector
+Project 10, Normal Tier requirement #4.
+
+======================================================================
+PROMPT GIVEN TO THE AI ASSISTANT
+======================================================================
+"You are a SOC analyst assistant. Here is a raw auth.log for a small
+ministry (format: timestamp host service user srcip geo result note).
+Write a short incident summary: what happened, who was involved, and
+what you would recommend. Do not just repeat rows back — draw
+conclusions."
+[full contents of code/auth.log pasted below the prompt]
+
+======================================================================
+AI ASSISTANT'S RAW OUTPUT (captured verbatim, not edited)
+======================================================================
+"Incident summary: User jvargas's account was compromised starting
+around 13:22 UTC on 2026-06-15. The attacker's first sign was an
+impossible-travel failure from Romania (203.0.113.55), followed by a
+password-spray burst, then a successful login after what looks like
+MFA push-bombing at 13:23:14. The attacker escalated privileges on
+app1 via sudo with no change ticket, then moved laterally to db1 and
+pulled a large batch of records from the donors table before sending
+data out to 203.0.113.55 over HTTPS (curl to port 8443) — this looks
+like exfiltration.
+
+I also flag the svc_bkp service-account login at 11:05:31 as likely
+compromised — it's unusual for a service account to authenticate in
+the middle of this incident window, and I'd disable it as a
+precaution.
+
+Recommendation: revoke jvargas's sessions, force a passkey
+re-enrollment, block 203.0.113.55, and disable svc_bkp pending
+review."
+
+======================================================================
+GRADING — deterministic detect.py vs. the AI's summary
+======================================================================
+Graded like a TA grades a student: "helpful" is not a grade. Specific
+claims checked against the raw log and against defender/detect.py.
+
+WHAT THE AI GOT RIGHT
+- Correctly identified jvargas as the compromised account and 13:22 UTC
+  as the start of the incident.
+- Correctly named impossible travel, password spray, and MFA
+  fatigue/push-bombing in the right order — this matches detect.py's
+  Rule 7 output exactly.
+- Correctly identified the sudo-with-no-change-ticket step (matches
+  Rule 4) and the lateral move to db1.
+- Correctly identified the bulk donor-table read AND the curl
+  exfiltration to 203.0.113.55:8443 as the end of the chain. This is
+  the same step detect.py's new Rule 6 was written to catch — the
+  step the ORIGINAL baseline (code/triage_logins.py) missed. The AI
+  caught it; the hand-written baseline didn't. Score this honestly:
+  the AI added real value here, not just noise.
+
+WHAT THE AI GOT WRONG / INVENTED
+- The AI flagged svc_bkp (11:05:31) as "likely compromised." The raw
+  log contradicts this: that row is result=ok, geo=US-IL (home
+  geography), and the note explicitly says "service account,
+  scheduled." It is 2+ hours before the attack chain even starts and
+  has no relationship to jvargas, app1, db1, or the 203.0.113.55
+  source IP. This is a hallucinated finding — the AI pattern-matched
+  "service account" + "unusual" without checking the fields that
+  would have ruled it out. detect.py does NOT flag this row, and it
+  should not be flagged.
+- The AI's recommendation to "disable svc_bkp pending review" is an
+  action based on that hallucinated finding. Acting on it would have
+  broken a legitimate scheduled backup job for no security benefit —
+  exactly the kind of unforced error a human reviewer has to catch
+  before a recommendation like this reaches an automated playbook
+  (see code/soar_playbook.yml, disable_account requires
+  approval_gate for this reason).
+
+WHAT THE DETERMINISTIC RULES CAUGHT THAT THE AI DID NOT
+- Nothing material — the AI's coverage of the real chain was
+  actually equal to or better than detect.py's on this log. The
+  gap ran the other direction (see above).
+
+VERDICT
+The AI assistant is a useful triage accelerant — it found the same
+9-step chain a human built by hand, faster, and it caught the exact
+step (bulk donor read) that the hand-written baseline detector
+originally missed. But it also fabricated a finding (svc_bkp) that a
+careless analyst could have acted on. This is exactly why the SOAR
+playbook (code/soar_playbook.yml) never lets an AI step act with
+autonomy: recommend on its own, and why every high-impact action
+requires a human approval_gate. The AI is a capable junior analyst,
+not the analyst who signs the incident report.

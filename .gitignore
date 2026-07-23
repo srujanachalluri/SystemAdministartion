@@ -9,6 +9,7 @@ ehthumbs.db
 
 # Logs
 *.log
+!10-security-operations/code/auth.log
 
 # Editor
 .vscode/
