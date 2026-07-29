@@ -1,0 +1,20 @@
+# Word lock files
+~$*
+
+# The live estate and the local archive live OUTSIDE this repo (see code/env.sh),
+# so nothing large should ever land here. These are belt-and-braces in case
+# somebody changes GF_ESTATE to a path inside the repo.
+*.safetensors
+*.dump
+*.bundle
+*.tgz
+
+# Everything in output/ IS the evidence and MUST be committed:
+#   restore-test.log, immutability-test.log, rpo-rto-output.txt,
+#   backup-*.log, reproducible-receipt-*.txt
+# Do not add output/ to this file.
+#
+# The repo root .gitignore has a blanket "*.log" rule, which would silently drop
+# output/restore-test.log - the transcript this project is actually graded on.
+# This line puts it back. Do not remove it.
+!output/*.log

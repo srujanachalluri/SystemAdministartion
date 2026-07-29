@@ -1,0 +1,481 @@
+================================================================
+DR-PLAN.txt
+Disaster Recovery Plan - Grace Fellowship RAG Assistant
+================================================================
+
+Owner:            IT steward, Grace Fellowship
+Estate:           gf-rag-assistant
+Serves:           about 400 congregants a week
+Plan reviewed:    quarterly, and again after every retrain
+Last restore test: FILL IN THE DATE YOU RAN restore_test.sh
+
+Project 11, Chapter 11 - Backup, Recovery, and the Ark You Build
+Before the Flood.
+
+
+----------------------------------------------------------------
+SECTION 1 - WHAT WE ARE PROTECTING AND WHY IT MATTERS
+----------------------------------------------------------------
+
+Grace Fellowship runs a RAG assistant that answers questions about
+ministries, events, and the church's positions. It runs on a
+fine-tuned open-weight model, a pgvector store holding embeddings
+and source documents, a prompt library the volunteer team tuned
+over dozens of revisions, and a small hand-labelled evaluation set.
+
+The scenario this plan is written against: a volunteer's laptop is
+compromised by phishing on a Friday. By Monday, ransomware has
+encrypted the serving host AND the one external drive somebody had
+been manually copying "the AI files" onto - because that drive was
+mounted and writable at the time.
+
+That last clause is the whole lesson. A copy that is online and
+writable when the attack happens is not a backup. It is a second
+victim.
+
+So the two decisions that drive this entire plan are:
+
+  1. Which assets can we NOT re-create? Those get protected.
+  2. Which copies can ransomware reach? Those need to be
+     immutable, not just remote.
+
+
+----------------------------------------------------------------
+SECTION 2 - CLASSIFICATION: WHAT IS IRREPLACEABLE, WHAT IS NOT
+----------------------------------------------------------------
+
+The full register with per-asset reasoning is in
+dr-asset-register.yaml. Summary of the calls I made:
+
+IRREPLACEABLE - we back these up
+
+  fine-tuned-weights
+    11.5 GPU-hours of training on a corpus that has since been
+    edited. Even with identical data the run is not bit-for-bit
+    reproducible. This is the one people assume is replaceable
+    because "we can just retrain" - you cannot, because the exact
+    training corpus no longer exists in that form.
+
+  vector-db-source
+    The documents and their embeddings. Three months of volunteer
+    curation and labelling. If this goes, the project effectively
+    ends, because nobody is volunteering three more months.
+
+  prompt-library
+    Tiny in bytes, large in behaviour. Forty-plus revisions is
+    what stops the assistant inventing service times and answering
+    doctrinal questions it should be refusing.
+
+  app-configs
+    Retrieval thresholds, rerank depth, refusal rules. Tuned
+    empirically. Nobody remembers why min_score is 0.62, which is
+    exactly why it has to be archived. Secrets are NOT included -
+    only the .env template. See section 7.
+
+  eval-datasets
+    Hand-labelled question and answer pairs. Without them we
+    cannot tell whether a restored model is the model we had.
+
+REPRODUCIBLE - we deliberately do NOT back these up
+
+  vector-db-hnsw-index
+    A graph derived entirely from embeddings we already protect.
+    Storing it would mean paying for bytes we can regenerate.
+    We store the CREATE INDEX statement instead.
+
+  base-model-checkpoint
+    4.7 GB of open-weight bytes anyone can re-pull. We store the
+    DIGEST, not the bytes, because the digest is what a recovery
+    actually needs. Never ":latest" - a tag that moves is not a
+    recovery point.
+
+The one that is easy to get wrong: reproducible does not mean
+unimportant. Both reproducible assets are on the critical path.
+The assistant cannot serve anybody without the base model, and
+without the HNSW index retrieval degrades to a sequential scan and
+the assistant is too slow to use. We do not store them; we do
+budget recovery time for them. Those are different decisions and
+conflating them is how RTO estimates end up wrong.
+
+Evidence that we really did skip them, rather than forgetting:
+backup_ai_estate.sh writes output/reproducible-receipt-<stamp>.txt
+on every run, recording how many bytes were skipped and the exact
+command to rebuild each one.
+
+
+----------------------------------------------------------------
+SECTION 3 - THE 3-2-1 DESIGN, AND WHICH LOCK MODE WHERE
+----------------------------------------------------------------
+
+3 copies:
+  1. the live estate on the serving host
+  2. a local archive folder, written on every backup run
+  3. object storage, object-locked, treated as offsite
+
+2 media:
+  local filesystem, and object storage
+
+1 offsite:
+  the object-locked buckets. In production these are S3 in a
+  different region than the serving host. In this lab they are
+  MinIO on localhost, which speaks the same S3 API, so the object
+  lock behaviour being tested is real and not simulated.
+
+HONEST GAP: in this lab all three copies sit on one disk, because
+a Codespace has one disk. The 3-2-1 topology is implemented and
+every part of it is tested, but the physical separation is not
+real here. The production mapping is: copy 2 to the church NAS,
+copy 3 to S3 in a second region. I am naming this rather than
+pretending the lab satisfies it, because a plan that overstates
+its own coverage is worse than one with a documented gap.
+
+WHY TWO BUCKETS INSTEAD OF ONE
+
+Object Lock has two modes and they are not interchangeable.
+
+  gf-ai-worm   COMPLIANCE mode, 30-day retention
+               fine-tuned-weights, eval-datasets
+
+    COMPLIANCE means no version can be deleted before its
+    retention expires. Not by an ordinary user, not with a bypass
+    flag, not with the root credential. These two assets never
+    legitimately change after a release, so the only thing that
+    would ever want to overwrite them is ransomware. Giving up our
+    own ability to delete them costs us nothing we want.
+
+  gf-ai-gov    GOVERNANCE mode, 30-day retention
+               vector-db-source, prompt-library, app-configs
+
+    GOVERNANCE refuses ordinary deletes but allows a privileged
+    caller passing --bypass to delete a version on purpose. We
+    keep that escape hatch for two specific, foreseeable events:
+
+      - A member asks us to delete a document about them. That
+        request has to be honourable inside the backups too, not
+        just in the live database.
+      - A volunteer pastes a real credential into a prompt file
+        and it gets archived. Under COMPLIANCE that leak would be
+        permanent for the full retention window.
+
+    The cost of that hatch, stated plainly: an attacker who gets
+    a sufficiently privileged credential could use --bypass too.
+    That is precisely why the weights and eval sets are NOT in
+    this bucket. The tier that needs no escape hatch does not get
+    one.
+
+The chapter hint says object lock cuts both ways, and it does. The
+mode is chosen per tier based on whether we can name a legitimate
+reason to ever delete. If we can, GOVERNANCE. If we cannot,
+COMPLIANCE.
+
+ONE-WAY DOOR: Object Lock requires versioning and can only be
+enabled when a bucket is CREATED. You cannot add it to a bucket
+you already have. That is why setup_estate.sh uses
+"mc mb --with-lock" and why the two-bucket split had to be decided
+up front rather than adjusted later.
+
+Both modes were tested rather than assumed. See
+prove_immutability.sh and section 6.
+
+
+----------------------------------------------------------------
+SECTION 4 - THE RUNBOOK
+----------------------------------------------------------------
+
+Written to be followed at 2 a.m. by somebody who is not thinking
+clearly. Do the steps in order. Do not skip step 0.
+
+STEP 0 - STOP AND CONTAIN (before restoring anything)
+
+  0.1  Disconnect the serving host from the network. Do not
+       reboot it - memory may matter for the investigation.
+  0.2  Do NOT mount any backup target as writable from the
+       compromised host. This is how the external drive was lost
+       in the first place. Restore onto a CLEAN host.
+  0.3  Rotate every credential in the password manager: the
+       Postgres password, the object storage keys, and any API
+       keys in the serving config. Assume all of them are known
+       to the attacker.
+  0.4  Check the object storage audit log for delete or bypass
+       attempts. Under COMPLIANCE they will have failed, but the
+       attempts tell you what the attacker was after.
+
+  Restoring onto a still-compromised host just re-encrypts the
+  restore. Contain first.
+
+STEP 1 - CONFIRM WE HAVE SOMETHING TO RESTORE (target: 10 min)
+
+  source code/env.sh
+  mc ls -r gf/gf-ai-worm
+  mc ls -r gf/gf-ai-gov
+  mc retention info --default gf/gf-ai-worm
+
+  Pick the most recent stamp from before the compromise date.
+  If the newest objects are dated after the compromise, use
+  "mc ls --versions" and choose an earlier version. Object Lock
+  means the older versions are still there.
+
+STEP 2 - RESTORE INTO SCRATCH AND VERIFY, NOT INTO PRODUCTION
+
+  ./code/restore_test.sh <STAMP>
+
+  Never restore straight into production. This script restores
+  into a temporary folder and a throwaway database, verifies
+  checksums, counts rows, and rebuilds the index. If it fails
+  here, you have learned that for free. If it passes, you now
+  know the archive is good before you touch anything live.
+
+STEP 3 - RECOVER THE ASSETS, IN THIS ORDER
+
+  Order matters. It follows the critical path.
+
+  3.1  base model      (60 min - the longest step, start it first)
+         ollama pull llama3.1:8b-instruct-q4_K_M
+         Verify the digest against models/base/PIN.txt.
+         If a digest-pinned local cache exists, copy from it
+         instead. See section 5.
+
+  3.2  fine-tuned weights                            (45 min)
+         mc cp -r gf/gf-ai-worm/models/finetuned/ ./
+         Verify against the sha256 manifest BEFORE loading it.
+
+  3.3  vector source                                 (30 min)
+         mc cp gf/gf-ai-gov/vectors/vectors-<STAMP>.dump .
+         pg_restore --section=pre-data --section=data \
+                    --dbname=gf_ragdb vectors-<STAMP>.dump
+         Check the row count against what the register expects.
+
+  3.4  HNSW index - REBUILD, do not restore    (measured, sec 5)
+         CREATE INDEX documents_embedding_hnsw ON documents
+           USING hnsw (embedding vector_cosine_ops)
+           WITH (m = 16, ef_construction = 64);
+
+  3.5  prompt library                                (10 min)
+         mc cp gf/gf-ai-gov/prompts/prompts-<STAMP>.bundle .
+         git clone prompts-<STAMP>.bundle prompts
+
+  3.6  configs                                       (10 min)
+         mc cp gf/gf-ai-gov/configs/configs-<STAMP>.tgz .
+         tar -xzf configs-<STAMP>.tgz
+         Then re-enter the real secrets from the password manager.
+         They are NOT in this archive, on purpose. See section 7.
+
+STEP 4 - PROVE IT ACTUALLY WORKS BEFORE ANNOUNCING RECOVERY
+
+  4.1  Run the eval set from
+       gf-ai-worm/datasets/eval_qa.jsonl. Compare against the
+       recorded expected answers.
+  4.2  Confirm the refusal cases still refuse. A restored model
+       that has lost its refusal behaviour is a liability, not a
+       recovery.
+  4.3  Only after 4.1 and 4.2 pass, put it back in front of
+       congregants.
+
+STEP 5 - AFTER
+
+  Write down what actually broke and what the real timings were.
+  Update the rto_minutes in dr-asset-register.yaml with measured
+  numbers. Update last_restore_test. Run rpo_rto.py again.
+
+
+----------------------------------------------------------------
+SECTION 5 - THE NUMBERS, AND THE WEAKEST LINK
+----------------------------------------------------------------
+
+These are computed by rpo_rto.py from the register, not guessed.
+The committed output is in output/rpo-rto-output.txt.
+
+RECOVERY POINT OBJECTIVE
+
+  worst case, any asset  : 1440 min (24 hours)
+  service critical       :   60 min (1 hour)
+
+  I report two numbers on purpose. A single figure of 1440 minutes
+  reads like negligence. The two assets carrying it - the weights
+  and the eval sets - only change during a planned retrain, which
+  is an announced event, so a daily snapshot loses nothing in
+  practice. What a congregant would actually notice losing is
+  newly added content, and that is protected hourly.
+
+RECOVERY TIME OBJECTIVE, serial recovery
+
+  chapter formula        :  125 min
+  true critical path     :  175 min   <-- the number I will defend
+
+  The chapter's formula sums the irreplaceable assets plus
+  anything marked rebuild-on-recovery. That scores the base model
+  checkpoint at zero minutes, because it is reproducible with a
+  cache-not-backup strategy. But the assistant cannot answer a
+  single question until those 4.7 GB are back on disk. Fifty
+  minutes of real downtime were missing from the reported figure.
+
+  I added a critical_path flag to the register and made rpo_rto.py
+  sum that instead. It prints both numbers so the difference is
+  visible rather than quietly corrected. I am reporting the worse
+  number because it is the true one.
+
+WEAKEST LINK ON THE CRITICAL PATH
+
+  base-model-checkpoint - 60 minutes, 34% of total RTO.
+
+  The single largest block of downtime in this estate is not any
+  of the irreplaceable assets. It is re-downloading a file that is
+  freely available and that we deliberately chose not to store.
+
+  That is a genuinely uncomfortable finding, and it is the most
+  useful thing in this plan. The fix is cheap and it is not "back
+  up the base model": keep a digest-pinned local cache on the
+  recovery host, so step 3.1 becomes a local copy instead of a
+  download. That would cut the estate RTO from 175 minutes to
+  roughly 120. Recommended as the next action.
+
+PREDICTED VERSUS MEASURED INDEX REBUILD
+
+  predicted (in the register) : 20 minutes
+  measured (restore_test.sh)  : FILL IN FROM output/restore-test.log
+
+  This is the honest-gap line the chapter asks for. Fill in the
+  measured number from your restore test run, then write one
+  sentence here about the gap.
+
+  For context on how to read your number: the lab has 512 chunks.
+  Grace Fellowship's real corpus is closer to 180,000 chunks. HNSW
+  build time grows roughly with n log n, so a lab measurement of
+  well under a second does NOT mean production rebuilds in under a
+  second. Scaling 512 to 180,000 is about a 350x increase in rows
+  and roughly 500x in work, so a 0.6 second lab build implies
+  something in the region of 5 minutes at production scale.
+
+  Which means my 20 minute prediction was probably pessimistic by
+  about 4x. That is still the right direction to be wrong in for a
+  DR estimate, but it is worth correcting, because a padded RTO on
+  one asset hides where the real time goes - and in this estate
+  the real time is the base model download, not the index.
+
+
+----------------------------------------------------------------
+SECTION 6 - HOW WE KNOW ANY OF THIS IS TRUE
+----------------------------------------------------------------
+
+Nothing in this plan is asserted without a test.
+
+  Restore works
+    restore_test.sh, transcript in output/restore-test.log.
+    Verifies dataset checksums against the manifest captured at
+    backup time, verifies the weights checksums, clones the prompt
+    bundle, restores the vector dump into a throwaway database,
+    compares the recovered row count against production, confirms
+    the embedding dimensions survived, confirms the derived index
+    did NOT come back from the archive, rebuilds it, times the
+    rebuild, and runs a similarity query against the result.
+
+  The object lock is real
+    prove_immutability.sh, transcript in
+    output/immutability-test.log. It attacks a canary object in
+    each bucket and checks that the right calls fail.
+
+  We did not pay to store derived state
+    output/reproducible-receipt-<stamp>.txt, written on every
+    backup run, plus the explicit check in restore_test.sh step 4
+    that zero HNSW indexes came back from the archive.
+
+  The numbers are computed
+    output/rpo-rto-output.txt, produced by rpo_rto.py from the
+    register.
+
+TWO THINGS THAT WENT WRONG WHILE BUILDING THIS
+
+Both are written up in agent-log.txt. Recording them here too
+because both changed the design.
+
+  1. The first immutability test was WRONG. It ran "mc rm" on a
+     locked object and asserted it would fail. It did not fail -
+     it reported success. The near-miss conclusion was "object
+     lock is broken." It is not. On a versioned bucket, rm with no
+     version id writes a DELETE MARKER: the object disappears from
+     a normal listing while the locked version sits underneath,
+     untouched and still readable. Object Lock protects VERSIONS,
+     not names. The corrected test deletes a specific version id,
+     which is what an attacker would actually have to do.
+
+     Operational consequence, in the runbook at step 1: if the
+     newest object looks wrong or missing, use "mc ls --versions"
+     and recover the earlier version. A file that looks deleted
+     probably is not.
+
+  2. The first version of that test attacked the real weights
+     object instead of a canary. It left a 24-byte "ransomware"
+     file as the current version and broke the next restore test -
+     and because the bucket is COMPLIANCE locked, the mess could
+     not be deleted. That is a fast and memorable way to learn
+     what COMPLIANCE mode actually means. Tests now run against a
+     disposable canary.
+
+
+----------------------------------------------------------------
+SECTION 7 - THINGS DELIBERATELY LEFT OUT, AND KNOWN GAPS
+----------------------------------------------------------------
+
+SECRETS ARE NOT IN THE BACKUP
+
+  Only configs/.env.template is archived. Real credentials live in
+  the password manager. This is a decision, not an oversight: an
+  archive full of live credentials is a second breach waiting to
+  happen, and it is one an attacker gets for free once they reach
+  the archive. The cost is that step 3.6 of the runbook requires a
+  human with password manager access. That is the right trade.
+
+KNOWN GAPS, STATED PLAINLY
+
+  1. All three copies are on one disk in this lab. Discussed in
+     section 3. Production mapping is documented; the physical
+     separation is not tested here.
+
+  2. The full runbook has never been executed end to end on a
+     genuinely clean host. restore_test.sh proves the archive is
+     good and restorable. It does not prove that step 0
+     containment works under real pressure, and it does not prove
+     the 175 minute figure - that is a sum of per-asset estimates,
+     only one of which has been measured. A full drill on a clean
+     host is the second recommended action after the base model
+     cache.
+
+  3. Retention is 30 days. If a compromise is not noticed for
+     more than 30 days, the clean versions may have expired. For a
+     volunteer-run estate where nobody is watching daily, 30 days
+     is arguably too short. Worth revisiting at the next quarterly
+     review.
+
+  4. Only one restore test has been run. A single pass proves the
+     archive is restorable today. It does not prove the backup
+     stays restorable as the estate changes shape. The review
+     cadence exists for that reason and the last_restore_test
+     field is there to make a stale plan visible.
+
+
+----------------------------------------------------------------
+SECTION 8 - RECOMMENDATION
+----------------------------------------------------------------
+
+The architecture decision I would put my name on:
+
+Keep the two-tier lock split, and spend the next hour of effort on
+a digest-pinned local base-model cache rather than on any of the
+irreplaceable assets.
+
+The reasoning: the irreplaceable tier is already protected about
+as well as this estate can afford. It is checksummed, it is
+COMPLIANCE locked, and the restore has been measured rather than
+assumed. Adding more protection there has diminishing returns.
+
+Meanwhile 34% of total recovery time - the single largest block -
+is spent re-downloading a file that is freely available and that
+we correctly chose not to back up. The classification is right.
+The recovery design around it is not. Caching it, pinned by
+digest, cuts about 55 minutes off the estate RTO for the cost of
+4.7 GB of disk.
+
+That is the call an agent could not have made for me, because it
+depends on knowing that this is a church running on volunteer
+internet where a 4.7 GB download is slow, and on having noticed
+that the chapter's own RTO formula scores that asset at zero.

@@ -1,0 +1,147 @@
+# dr-asset-register.yaml - Grace Fellowship RAG assistant.
+#
+# Adapted from the chapter's reference register. Every classification and every
+# number below is a judgement call I made and defend in DR-PLAN.txt. I drafted this
+# with an AI assistant's help on the mechanics, but the classifications and the
+# RPO/RTO numbers are mine - see agent-log.txt for where I changed what it gave me.
+#
+# The fields:
+#   class         reproducible  = we can re-derive it from something we still hold
+#                 irreplaceable = human labour or unique state; gone means gone
+#   lock_mode     COMPLIANCE  nobody can delete a version before it expires, not even us
+#                 GOVERNANCE  a privileged user can delete it deliberately, and it is logged
+#                 none        not stored in object storage
+#   critical_path true means the assistant cannot serve anybody until this asset is
+#                 back, EVEN IF the asset is reproducible. The chapter's RTO formula
+#                 misses this. See rpo_rto.py and DR-PLAN.txt section 5.
+#   rpo_minutes   the most work we are willing to lose
+#   rto_minutes   how long until this asset is serving again
+
+estate: gf-rag-assistant
+owner: it-steward@gracefellowship.example
+review_cadence: quarterly        # and again after every retrain, because the estate changes shape
+last_restore_test: FILL_IN       # put the date you ran restore_test.sh here
+serves: about 400 congregants a week
+
+assets:
+  - name: fine-tuned-weights
+    class: irreplaceable
+    store: minio://gf-ai-worm/models/finetuned
+    strategy: 3-2-1
+    immutable: true
+    lock_mode: COMPLIANCE
+    critical_path: true
+    rpo_minutes: 1440
+    rto_minutes: 45
+    justification: >
+      11.5 GPU-hours of training on a corpus that has since been edited. Even with
+      the same data the run is not bit-for-bit reproducible, so this is
+      irreplaceable rather than expensive. COMPLIANCE lock because these bytes never
+      legitimately change after a release - the only thing that would want to
+      overwrite them is ransomware. RPO of 1440 minutes is honest and not lazy: the
+      file only changes on a retrain, which is a planned and announced event, so a
+      daily snapshot loses nothing in practice.
+
+  - name: vector-db-source
+    class: irreplaceable
+    store: minio://gf-ai-gov/vectors and pgvector://gf_ragdb
+    strategy: hourly-logical-dump plus 3-2-1
+    immutable: true
+    lock_mode: GOVERNANCE
+    critical_path: true
+    rpo_minutes: 60
+    rto_minutes: 30
+    justification: >
+      The documents and their embeddings. Three months of volunteer curation, and
+      the asset whose loss would actually end the project. GOVERNANCE rather than
+      COMPLIANCE because a member can ask us to delete a document about them, and
+      that request has to be honourable inside the backups too, not just in
+      production. RPO of 60 minutes means hourly dumps; an hour of newly added
+      content can be re-ingested in an afternoon.
+
+  - name: vector-db-hnsw-index
+    class: reproducible
+    store: pgvector://gf_ragdb (derived, not archived)
+    strategy: rebuild-on-recovery
+    immutable: false
+    lock_mode: none
+    critical_path: true
+    rpo_minutes: 0
+    rto_minutes: 20
+    justification: >
+      A graph derived entirely from embeddings we already protect, so backing it up
+      would mean paying storage for bytes we can regenerate. It is still on the
+      critical path: without it, retrieval falls back to a sequential scan and the
+      assistant is too slow to be usable, so "reproducible" does not mean
+      "unimportant". The 20 minutes here is my PREDICTION before measuring.
+      restore_test.sh measures the real number. The gap between the two is discussed
+      in DR-PLAN.txt section 5, and it is the most useful thing in this file.
+
+  - name: eval-datasets
+    class: irreplaceable
+    store: minio://gf-ai-worm/datasets
+    strategy: 3-2-1 plus sha256 manifest
+    immutable: true
+    lock_mode: COMPLIANCE
+    critical_path: false
+    rpo_minutes: 1440
+    rto_minutes: 10
+    justification: >
+      Hand-labelled question and answer pairs. Without them we cannot tell whether a
+      restored model is the model we had, which makes them the yardstick for every
+      future recovery. COMPLIANCE lock because a tampered eval set is worse than a
+      missing one - it makes a broken restore look healthy. Not on the critical path,
+      since the assistant can serve while we re-validate, but recovery is
+      unverifiable without them, which is why the RTO is still short.
+
+  - name: prompt-library
+    class: irreplaceable
+    store: minio://gf-ai-gov/prompts (git bundle) and the git repo itself
+    strategy: git plus offsite bundle
+    immutable: true
+    lock_mode: GOVERNANCE
+    critical_path: true
+    rpo_minutes: 5
+    rto_minutes: 10
+    justification: >
+      Small in bytes, large in behaviour. Forty-plus revisions of tuning is what
+      stops the assistant inventing service times and answering doctrinal questions
+      it should refuse. GOVERNANCE lock is the escape hatch: volunteers edit these
+      files, and if a real credential is ever pasted into one we have to be able to
+      purge that object. Under COMPLIANCE the leak would be permanent for the full
+      retention period.
+
+  - name: app-configs
+    class: irreplaceable
+    store: minio://gf-ai-gov/configs
+    strategy: git plus offsite bundle
+    immutable: true
+    lock_mode: GOVERNANCE
+    critical_path: true
+    rpo_minutes: 5
+    rto_minutes: 10
+    justification: >
+      Retrieval thresholds, rerank depth, refusal rules. These were tuned
+      empirically and nobody remembers why min_score is 0.62, which is precisely why
+      it has to be archived. Secrets are excluded on purpose - only .env.template
+      ships. Real credentials live in the password manager. A backup archive is not
+      a secrets store, and an archive full of live credentials is a second breach
+      waiting to happen.
+
+  - name: base-model-checkpoint
+    class: reproducible
+    store: oci://registry.ollama.ai/library/llama3.1:8b-instruct-q4_K_M
+    strategy: cache-not-backup
+    immutable: true                 # pinned by digest, never by the ":latest" tag
+    lock_mode: none
+    critical_path: true
+    rpo_minutes: 0
+    rto_minutes: 60
+    justification: >
+      4.7 GB of open-weight bytes that anyone can re-pull, so we do not archive
+      them. We archive the DIGEST, because that is what a recovery actually needs.
+      But re-pulling 4.7 GB over a church internet connection is the single largest
+      block of recovery time in the whole estate, which makes it the weakest link -
+      see DR-PLAN.txt section 5. The fix is to hold a digest-pinned local cache so
+      recovery becomes a copy instead of a download. And never pin ":latest": a tag
+      that moves is not a recovery point.

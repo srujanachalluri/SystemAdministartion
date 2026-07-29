@@ -1,0 +1,270 @@
+================================================================
+agent-log.txt
+AI delegation log - Project 11, DR for the AI Estate
+================================================================
+
+>>> READ THIS BEFORE SUBMITTING <<<
+This is a truthful record of what I delegated to an AI assistant
+and what came back. Some entries below are marked [CONFIRM] where
+the reasoning originated with the agent rather than with me. Go
+through those, decide whether you agree, and either replace the
+entry with your own reasoning or say plainly that you accepted the
+agent's. Do not delete them. An honest log that says "the agent
+suggested this and I agreed after checking it" is worth more than
+a log that pretends otherwise, and the whole point of this
+assignment is that the judgement is auditable.
+Delete this notice once you have been through it.
+
+
+Assistant used: Claude Code (Opus), via the terminal
+Phase 2 policy: agentic AI is ON. Scripting and the first draft of
+the runbook may be delegated. Classification and the RPO/RTO
+decisions are mine.
+
+
+----------------------------------------------------------------
+1. WHAT I DELEGATED
+----------------------------------------------------------------
+
+1.1  Reading the assignment
+     I gave the agent the ten assignment screenshots and asked it
+     to extract the requirements and the grading rubric. This
+     saved time and it got it right - I checked the rubric it
+     produced against the screenshots line by line.
+
+1.2  Adapting the four starter files
+     I pointed it at the professor's code/ directory and asked it
+     to adapt backup_ai_estate.sh, restore_test.sh, rpo_rto.py and
+     dr-asset-register.yaml to the Grace Fellowship estate. The
+     mechanics are the agent's. The asset list and the tiering are
+     mine (see section 3).
+
+1.3  Standing up a local estate to protect
+     I asked for a setup script that builds the fake estate:
+     weights file, pgvector database with embeddings and an HNSW
+     index, git prompt library, eval datasets, configs.
+
+1.4  Writing the immutability test
+     Not in the starter kit. I asked for it because "the bucket is
+     object-locked" is a claim and I wanted evidence. This is
+     where the agent was most wrong - see 2.2 and 2.3.
+
+1.5  First draft of the runbook in DR-PLAN.txt
+     Explicitly permitted by the assignment. I asked for the step
+     order to follow the critical path rather than being
+     alphabetical or convenient.
+
+
+----------------------------------------------------------------
+2. WHERE THE AGENT WAS WRONG
+----------------------------------------------------------------
+
+2.1  A SQL BUG THAT MADE THE WHOLE DATASET FAKE
+
+     The setup script generated 512 embeddings with a nested
+     subquery per row. Postgres treats an uncorrelated subquery as
+     a one-time plan: it ran random() ONCE and gave every single
+     row the identical vector.
+
+     How it was caught: the pg_dump came out at 19 KB. For 512
+     rows of 384 float4 values it should be around 580 KB. The
+     agent noticed the size was wrong, investigated, and fixed it
+     by cross-joining the two series and grouping. Fix verified
+     with a distinct-vector count, which setup_estate.sh now
+     prints on every run as a permanent check.
+
+     Why this mattered: with identical vectors the similarity
+     search in the restore test would have returned 8 neighbours
+     and PASSED, while proving nothing at all. A green test on
+     fake data is worse than a red test.
+
+2.2  THE IMMUTABILITY TEST ASSERTED THE WRONG THING
+
+     The first version ran "mc rm" on a locked object and
+     asserted it must fail. It did not fail. It reported success:
+     "Created delete marker". The script printed
+     "!! DELETE SUCCEEDED - object lock is NOT protecting this
+     tier."
+
+     That conclusion was wrong. On a versioned bucket, rm with no
+     version id writes a DELETE MARKER. The object disappears from
+     a normal listing while the locked version sits underneath,
+     untouched and still readable and still checksum-verifiable.
+     Object Lock protects VERSIONS, not names.
+
+     The corrected test deletes a SPECIFIC VERSION ID, which is
+     what an attacker would actually have to do to destroy the
+     archive, and separately demonstrates the delete-marker
+     behaviour and how to recover from it by removing the marker.
+
+     This is the single most useful thing I learned on this
+     project, and it changed the runbook: step 1 now says that if
+     the newest object looks missing, check "mc ls --versions"
+     before concluding anything is gone.
+
+2.3  THE TEST ATTACKED THE REAL ASSET AND BROKE THE NEXT RESTORE
+
+     That same first version ran its attacks against the actual
+     fine-tuned weights object rather than a throwaway. It left a
+     24-byte file containing "ENCRYPTED_BY_RANSOMWARE" as the
+     current version of the weights. The next restore test would
+     have failed its checksum check.
+
+     Worse: because the bucket is COMPLIANCE locked, the mess
+     could not be deleted. The only way out was to re-upload the
+     good weights as a newer version. That is a fast and
+     memorable way to learn what COMPLIANCE mode means in
+     practice.
+
+     Rewritten to plant and attack a disposable canary object.
+     Production assets are never the test subject.
+
+2.4  IT BUILT THE WHOLE THING FOR THE WRONG PLATFORM FIRST
+
+     The agent built and tested everything for macOS first,
+     including installing Postgres.app and MinIO onto my laptop.
+     It worked - the full pipeline passed there - but I did not
+     want tools installed on my machine and I wanted to run this
+     in a GitHub Codespace instead.
+
+     My call, and I made it: uninstall all of it and rebuild for
+     Codespaces using Docker containers, so nothing is installed
+     on any real machine and a grader can reproduce it from the
+     repo. Several things had to change: sha256sum instead of
+     shasum, Docker containers instead of local installs, and the
+     macOS disk-image trick for the second backup medium had to be
+     dropped because a Codespace cannot mount loop devices.
+
+     That last one created a real gap, which is documented in
+     DR-PLAN.txt section 3 rather than hidden: all three copies
+     are on one disk in this lab.
+
+2.5  IT KEPT ADDING SCRIPTS I HAD NOT ASKED FOR
+
+     It wrote an install script and started on a lab-reset script.
+     I stopped both. I wanted the setup commands visible in the
+     README so my professor can see them and so I run them
+     myself, rather than buried inside a wrapper. Also, the reset
+     script only existed to clean up the mess from 2.3, which was
+     the agent's bug and not a thing the project needs.
+
+
+----------------------------------------------------------------
+3. WHAT I DID NOT DELEGATE
+----------------------------------------------------------------
+
+3.1  THE CLASSIFICATION
+     Which assets are irreplaceable and which are reproducible.
+     The one worth defending: fine-tuned-weights is
+     irreplaceable, not merely expensive. The instinct is "we can
+     just retrain" - you cannot, because the training corpus has
+     since been edited and no longer exists in the form that
+     produced those weights.
+
+     [CONFIRM] Read every justification block in
+     dr-asset-register.yaml. Anything you disagree with, change,
+     and note the change here. The classifications are what 20 of
+     the 100 points are for.
+
+3.2  THE LOCK MODE PER TIER
+     COMPLIANCE for weights and eval datasets, GOVERNANCE for
+     vector dumps, prompts and configs.
+
+     The rule I applied: if I can name a legitimate reason we
+     would ever need to delete an object, it gets GOVERNANCE. If I
+     cannot, it gets COMPLIANCE. For prompts the reason is a
+     volunteer pasting a real credential into a prompt file. For
+     the vector store it is a member asking us to delete a
+     document about them. For weights and eval sets I could not
+     name one, so they get no escape hatch.
+
+     [CONFIRM] This reasoning was mine but the agent drafted the
+     wording. Make sure you can defend it out loud, because it is
+     20 more points.
+
+3.3  THE RPO AND RTO NUMBERS
+     Every rpo_minutes and rto_minutes in the register. The one I
+     expect to be challenged on is the 1440-minute RPO for
+     weights and eval sets. My defence: both only change during a
+     planned retrain, so a daily snapshot loses nothing real.
+     Which is also why I report a separate service-critical RPO of
+     60 minutes.
+
+     [CONFIRM] These are your numbers to defend. Change any you
+     disagree with, then re-run rpo_rto.py.
+
+3.4  [CONFIRM - THIS ONE ORIGINATED WITH THE AGENT]
+     THE CRITICAL PATH CHANGE TO rpo_rto.py
+
+     Being straight about this one because it is the strongest
+     single idea in the submission and it was not mine.
+
+     The agent noticed that the chapter's RTO formula scores the
+     base model checkpoint at zero minutes, because it is
+     reproducible with a cache-not-backup strategy - even though
+     the assistant cannot answer a single question until those
+     4.7 GB are back on disk. It proposed adding a critical_path
+     flag to the register and summing that instead, and printing
+     BOTH numbers so the difference is visible.
+
+     I checked it and I agree: 125 minutes understates real
+     downtime by 50 minutes, and reporting the smaller number
+     would be misleading. So it is in, and the weakest link
+     falls out of it - the base model at 34% of total RTO, which
+     drives the recommendation in DR-PLAN.txt section 8.
+
+     What I want on the record: I verified and accepted this
+     reasoning, I did not originate it.
+
+3.5  WHERE THE SCRIPTS WRITE
+     I checked every destructive-looking command before running
+     anything. restore_test.sh only ever writes into a mktemp
+     directory and a throwaway database, and cleans both up from
+     a trap so it happens even when a check fails. The dropdb
+     targets dr_scratch and never gf_ragdb. I read that before I
+     ran it, not after.
+
+
+----------------------------------------------------------------
+4. VERIFICATION I DID ON THE AGENT'S OUTPUT
+----------------------------------------------------------------
+
+  - Read every command in every script before running it, looking
+    specifically for anything that writes outside a scratch path.
+  - Confirmed the checksum manifest uses BASENAMES, not absolute
+    paths. With absolute paths, sha256sum -c fails inside the
+    scratch restore directory, and a manifest you cannot verify
+    is not a manifest.
+  - Confirmed restore_test.sh restores with --section=pre-data
+    --section=data so the HNSW index is genuinely absent, and
+    that step 4 asserts zero HNSW indexes came back. If you let
+    pg_restore rebuild the index for you, the rebuild time hides
+    inside the restore time and you cannot report it.
+  - Confirmed the distinct-vector count equals the row count, on
+    both the live database and the restored one, after the 2.1
+    bug.
+  - Re-read the two-bucket lock split against the assignment's
+    hint about object lock cutting both ways, and satisfied
+    myself the modes are assigned per tier for stated reasons
+    rather than uniformly.
+
+
+----------------------------------------------------------------
+5. HONEST SUMMARY
+----------------------------------------------------------------
+
+The agent was genuinely useful for the mechanics: bash quoting,
+the S3 API calls, pg_dump section flags, the shape of the
+scripts. It was fast and it was mostly right.
+
+It was wrong in ways that mattered three times, and two of those
+would have produced a submission that LOOKED complete: a
+similarity test passing on 512 identical vectors, and an
+immutability test confidently reporting the opposite of the truth.
+Both were caught by checking a number that looked wrong - a 19 KB
+dump, and a delete that succeeded when it should not have. Neither
+would have been caught by reading the output and nodding.
+
+The thing I would say to anyone doing this next: the agent will
+write you a script that runs. Whether the script proves what it
+claims to prove is entirely on you.
