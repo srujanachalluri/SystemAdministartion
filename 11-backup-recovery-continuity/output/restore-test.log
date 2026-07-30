@@ -2,8 +2,8 @@
  RESTORE TEST - Grace Fellowship AI estate
 ================================================================
  backup stamp   : 2026-07-30T15-54-55Z
- started (UTC)  : 2026-07-30T15:54:57Z
- scratch folder : /tmp/tmp.4awIwjLu8i
+ started (UTC)  : 2026-07-30T17:48:35Z
+ scratch folder : /tmp/tmp.FKWVcxyOkl
  scratch db     : dr_scratch   (the live db gf_ragdb is never written to)
  restoring from : http://127.0.0.1:9000, the object-locked buckets
 ----------------------------------------------------------------
@@ -37,3 +37,23 @@ PASS  0 HNSW indexes restored - we never paid to store derived state
 ----------------------------------------------------------------
 STEP 5 - MEASURED index rebuild. This measured time IS the RTO for the derived tier.
 rebuilding: CREATE INDEX documents_embedding_hnsw USING hnsw (m=16, ef_construction=64)
+
+  MEASURED INDEX REBUILD TIME : 0.18 seconds
+  rebuilt index size          : 1032kB   (bytes we kept out of the backup)
+  >> Put this number in DR-PLAN.txt section 5 and in dr-asset-register.yaml
+     under vector-db-hnsw-index.
+----------------------------------------------------------------
+STEP 6 - does the restored store actually answer a similarity query?
+PASS  similarity search on the restored and rebuilt index returned 8 neighbours
+----------------------------------------------------------------
+STEP 7 - base model: reproducible, so we check the PIN and not the bytes
+recovery path: ollama pull llama3.1:8b-instruct-q4_K_M   (pinned by digest, never :latest)
+Not restored here, by design. It is 4.7 GB of re-pullable bytes. How long that
+re-pull takes is a bandwidth measurement, not a backup measurement - but it is
+still real downtime, and it is the weakest link. See DR-PLAN.txt section 5.
+----------------------------------------------------------------
+finished (UTC): 2026-07-30T17:48:43Z
+the scratch database and scratch folder are being deleted now by the cleanup trap.
+
+RESULT: RESTORE TEST PASSED. 0 checks failed.
+        Recovery is proven, not assumed.
