@@ -1,4 +1,4 @@
-===============================================================================
+cd /workspaces/SystemAdministartion===============================================================================
 PROJECT 12 — DEPLOY IN THE CLOUD, READ THE BILL
 Grace & Mercy Relief — donor thank-you letter assistant
 Normal tier
@@ -86,12 +86,18 @@ PROVIDER
   published paid rate for the identical workload.
 
 
-TOTAL REAL SPEND ON THIS PROJECT
+RESULTS
 -------------------------------------------------------------------------------
-  Requests run           : ______
+  Requests run           : 40 real (+ 3 free practice) -- 40 OK, 0 failed
   Actually billed (USD)  : $0.00        <-- free tier
-  Cost at paid rate (USD): $______      <-- what this run would have cost
-  Date pulled            : ____-__-__
+  Cost at paid rate (USD): $0.0016      <-- what this run would have cost
+  Predicted beforehand   : $0.0008      <-- my guess was 98% too low
+  Tokens in / out        : 6,168 / 11,090  (154 / 277 per letter)
+
+  The gap: I predicted 130 output tokens per letter and got 277. The model
+  ignored the "90 words maximum" instruction; the max_tokens=300 cap in the
+  code is what actually limited the cost. Average output hit 92% of that cap.
+  See COST_REPORT.docx section 7.
 
   A subsidy is not a price. The free tier can be withdrawn or throttled, and
   its 50 req/day ceiling caps this workload's capacity regardless of budget.

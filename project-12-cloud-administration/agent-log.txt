@@ -1,90 +1,118 @@
-agent-log.txt — Project 12
+agent-log.txt -- Project 12
 Grace & Mercy Relief / donor-letters workload
-AI policy: Phase 2. AI was used. This log records what I delegated, what the
-agent produced, where it was wrong, and where I had to intervene.
 
-Agent used: Claude (Claude Code CLI), plus the provider's own docs and console.
+AI policy: Phase 2. I used AI on this project. This log records what I asked it
+to do, what it got wrong, and where I had to step in and correct it.
 
-FILL IN the bracketed [ ] items yourself as you work. Do not leave them blank —
-the log is graded on honesty, not on making the agent look good.
+Agent used: Claude (Claude Code CLI), plus the provider's own website and console.
 
-===============================================================================
-ENTRY 1 — Scaffolding the repository
--------------------------------------------------------------------------------
-Delegated : Build the repo layout — deploy script, tag config, adapted FinOps
-            script, the donor-letter workload against an OpenAI-compatible
-            endpoint, and a reconcile script.
-Agent did : Produced all of the above, including a --mock mode so the pipeline
-            could be tested with zero spend before any billable call.
-I checked : Read every file before running it. Confirmed no real key appears
-            anywhere, that .env is gitignored, and that the donor CSV contains
-            invented people only.
-Verdict   : Accepted.
+FILL IN: the two dates marked [ DATE ] below. Everything else is done.
 
 ===============================================================================
-ENTRY 2 — Prices (THIS IS THE ONE THAT MATTERS)
+ENTRY 1 -- Building the project files
 -------------------------------------------------------------------------------
-Delegated : Asked for the current per-token price of the model I planned to use.
-Agent did : Offered a price from its training data and from the mid-2026
-            snapshot table in code/token_cost.py.
-Problem   : Both are stale by construction. token_cost.py says so in its own
-            docstring: "All prices here are MID-2026 SNAPSHOTS and WILL have
-            drifted." An agent quoting a memorized price is quoting a number
-            nobody re-verified. The classic failure modes are (a) citing a price
-            that was accurate 18 months ago, (b) confusing per-1M-token rates
-            with per-1K, and (c) ignoring that output tokens cost 4–8x input.
-I did     : Opened the provider's live pricing page in the console and read the
-            numbers myself.
-  Price page URL   : [ paste the pricing URL you actually opened ]
-  Date pulled      : [ YYYY-MM-DD ]
-  Model ID         : [ exact model ID, not the marketing name ]
-  Input  $ / 1M    : [ ]
-  Output $ / 1M    : [ ]
-  Output/input mult: [ ]x
-Verdict   : Agent's number REJECTED. Used the console number for every
-            calculation in COST_REPORT.docx.
+What I asked : Build the folder structure, the deploy script, the tag settings,
+               the adapted cost-alert script, the letter-writing program, and
+               the comparison script.
+What it did  : Produced all of them, including a practice mode so I could test
+               the whole thing without spending anything or using up my daily
+               request allowance.
+What I did   : Read every file before running it. Checked that no real API key
+               appears anywhere, that .env is excluded from Git, and that the
+               donor list contains only made-up people.
+Result       : Accepted.
 
 ===============================================================================
-ENTRY 3 — Unit check on the prediction
+ENTRY 2 -- Prices and model names (THIS IS THE IMPORTANT ONE)
 -------------------------------------------------------------------------------
-Delegated : Sanity-check the predicted total before running traffic.
-Problem   : [ Did the agent's arithmetic match token_cost.py? If a number was
-              off by 1000x, that is a per-1K vs per-1M mix-up — write it down. ]
-I did     : Re-ran the prediction with code/token_cost.py, which is the
-            professor's own calculator, and used ITS output as the prediction of
-            record. Wrote the prediction down BEFORE generating traffic.
-Verdict   : [ agreed / disagreed — say which, and by how much ]
+What I asked : Which provider should I use, and what does it cost?
+
+PROBLEM 1 -- it recommended a provider my assignment does not list.
+  The agent suggested OpenRouter. My assignment names OpenAI Platform, Microsoft
+  Foundry / Azure OpenAI, Amazon Bedrock and Google Vertex AI. OpenRouter is not
+  on that list. The agent did not notice this until I questioned it directly.
+  I decided to use OpenRouter anyway because it was free and OpenAI-compatible,
+  but this was my decision made with the risk known, not something I was told.
+
+PROBLEM 2 -- it gave me a model name that no longer exists.
+  The agent first told me to use Groq with the model llama-3.3-70b-versatile.
+  That model was deprecated on 17 June 2026, about six weeks before I ran this.
+  If I had trusted it, my run would have failed immediately.
+
+PROBLEM 3 -- prices from memory are not prices.
+  The professor's own token_cost.py says in its notes that all its prices are
+  mid-2026 snapshots and will have drifted. An AI quoting a remembered price has
+  the same problem. The usual mistakes are quoting a price that was right a year
+  ago, mixing up "per million tokens" with "per thousand", and forgetting that
+  writing costs several times more than reading.
+
+What I did   : Stopped trusting remembered answers. Checked the live model list
+               and the pricing page directly.
+  Pricing page     : openrouter.ai/models
+  Date I checked   : 07/30/2026
+  Model I ran      : openai/gpt-oss-20b:free
+  Same model, paid : openai/gpt-oss-20b
+  Reading price    : $0.03 per 1M tokens
+  Writing price    : $0.13 per 1M tokens
+  Writing costs    : 4.3x more than reading
+Result       : First two recommendations rejected. Every number in
+               COST_REPORT.docx comes from the live pricing page.
 
 ===============================================================================
-ENTRY 4 — Token-shape estimate
+ENTRY 3 -- The daily limit it initially missed
 -------------------------------------------------------------------------------
-Delegated : Estimate input and output tokens per request for the letter prompt.
-Agent did : Estimated ~[ ] input and ~[ ] output tokens per request.
-Reality   : The measured run produced [ ] input and [ ] output per request.
-Why gap   : [ e.g. the model wrote shorter letters than the 300-token cap, so
-              output came in under estimate; or the system prompt was longer
-              than counted. ]
-Verdict   : [ close enough / materially wrong ]
+What I asked : How many requests should I run?
+What it said : 100 requests, at first.
+Problem      : The free tier allows only 50 requests per day for accounts that
+               have never bought credits. 100 would have failed halfway through
+               and used up my whole day's allowance with nothing to show.
+What I did   : Checked the published rate limits. Dropped to 40 requests, which
+               leaves room for retries, and slowed the program to 15 requests a
+               minute to stay under the 20-a-minute limit.
+Result       : Corrected before running. All 40 requests succeeded, none failed.
 
 ===============================================================================
-ENTRY 5 — Things the agent could NOT do
+ENTRY 4 -- Guessing how long the letters would be
 -------------------------------------------------------------------------------
-- It could not create my budget, alert, or hard cap. I set those in the provider
-  console myself, before traffic. See deploy/budget-alert.md.
-- It could not read my actual bill. I pulled the cost export myself.
-- It could not tell me whether $[ ] per month is defensible to a board that was
-  already burned once. That judgment is mine, and it is in COST_REPORT.docx.
+What I asked : Estimate the tokens each letter would use.
+Estimate     : About 120 tokens reading, 130 tokens writing.
+Reality      : 154 reading, 277 writing.
+How wrong    : Reading was 28% higher. Writing was 113% higher -- more than
+               double. Total cost was 98% higher than predicted.
+Why          : The model ignored the "90 words maximum" instruction in the
+               prompt and wrote much longer letters. The 300-token hard limit in
+               the code is what stopped it going further -- the average of 277
+               is 92% of that limit, so most letters were being cut off at the
+               ceiling.
+Lesson       : Asking the model nicely to be brief did not control the cost.
+               The hard limit in the code did. I would not have found this
+               without running the comparison.
+Result       : Estimate was materially wrong. Documented in COST_REPORT
+               section 7 rather than quietly adjusted.
 
 ===============================================================================
-ENTRY 6 — [ add your own ]
+ENTRY 5 -- Things the agent could not do
 -------------------------------------------------------------------------------
-[ Anything else the agent got wrong, or any point where you overrode it.
-  If nothing else went wrong, say that plainly — but be sure it is true. ]
+- It could not create my spending limit. I set the $0.00 credit limit on the API
+  key myself, in the OpenRouter console, before running any traffic.
+- It could not read my account activity. I pulled that myself.
+- It could not decide whether depending on a free tier is acceptable for a
+  charity's donor correspondence. That judgment is mine and it is written in
+  COST_REPORT section 6 and section 11.
+- It could not tell me the assignment's allowed-provider list mattered. I had to
+  read the assignment myself and ask.
 
 ===============================================================================
 SUMMARY
 -------------------------------------------------------------------------------
-AI was genuinely useful for scaffolding, boilerplate, and shaping scripts.
-It was NOT reliable on prices, units, or anything requiring a live console
-lookup. Every dollar figure in COST_REPORT.docx traces to a number I read off
-the provider's own billing pages on [ date ], not to anything the agent asserted.
+AI was genuinely useful for building files, writing boilerplate and adapting
+scripts. It saved me hours.
+
+It was unreliable on three things, all of which would have cost me real time if
+I had trusted them: a provider my assignment does not allow, a model name that
+had been retired six weeks earlier, and a request count that exceeded my daily
+limit. In every case the fix was the same -- go and look at the live console or
+read the assignment again.
+
+Every dollar figure in COST_REPORT.docx traces to a number I read myself on
+[ DATE ], not to anything the agent asserted from memory.
