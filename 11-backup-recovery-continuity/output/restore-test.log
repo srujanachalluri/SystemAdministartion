@@ -1,0 +1,39 @@
+================================================================
+ RESTORE TEST - Grace Fellowship AI estate
+================================================================
+ backup stamp   : 2026-07-30T15-54-55Z
+ started (UTC)  : 2026-07-30T15:54:57Z
+ scratch folder : /tmp/tmp.4awIwjLu8i
+ scratch db     : dr_scratch   (the live db gf_ragdb is never written to)
+ restoring from : http://127.0.0.1:9000, the object-locked buckets
+----------------------------------------------------------------
+STEP 1 - eval datasets: restore from the COMPLIANCE bucket, verify checksums
+the manifest that was captured at backup time:
+    562af958f7085e7890c87b4a86d2c963e7952b9b2290181081fe3edaea83564e  ./eval_qa.jsonl
+    093bfe4e1d92ab036b064f3970b6a2c7b52268703cf597a15c9cdb41fef2a884  ./regression_qa.jsonl
+verifying the restored files against it:
+./eval_qa.jsonl: OK
+./regression_qa.jsonl: OK
+PASS  datasets: checksums match the manifest captured at backup time
+----------------------------------------------------------------
+STEP 2 - fine-tuned weights: restore from the COMPLIANCE bucket, verify checksums
+./adapter_config.json: OK
+./gf-rag-v3.safetensors: OK
+PASS  weights: bit-for-bit identical to what was archived
+restored weights file size: 25M
+----------------------------------------------------------------
+STEP 3 - prompt library: does the git bundle actually clone?
+PASS  prompt library: cloned, 1 commit(s), files: retrieval.md system.md 
+----------------------------------------------------------------
+STEP 4 - vector store: restore the SOURCE into a throwaway database
+NOTICE:  database "dr_scratch" does not exist, skipping
+rows recovered into dr_scratch : 512
+rows in the live database          : 512
+PASS  vector source: recovered row count matches the live database (512 rows)
+embedding dimensions intact        : 384
+distinct embeddings recovered      : 512  (should equal the row count)
+confirming the derived index did NOT come back from the archive:
+PASS  0 HNSW indexes restored - we never paid to store derived state
+----------------------------------------------------------------
+STEP 5 - MEASURED index rebuild. This measured time IS the RTO for the derived tier.
+rebuilding: CREATE INDEX documents_embedding_hnsw USING hnsw (m=16, ef_construction=64)

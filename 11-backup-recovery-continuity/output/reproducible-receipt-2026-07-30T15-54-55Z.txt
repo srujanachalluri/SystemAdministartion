@@ -1,0 +1,29 @@
+REPRODUCIBLE ASSETS - DELIBERATELY NOT BACKED UP     (2026-07-30T15-54-55Z)
+================================================================
+
+asset: vector-db-hnsw-index
+  bytes not stored : 1032kB
+  why              : the HNSW graph is derived entirely from the embeddings
+                     in the documents table, and those ARE backed up.
+  rebuild command  : CREATE INDEX documents_embedding_hnsw ON documents
+                       USING hnsw (embedding vector_cosine_ops)
+                       WITH (m = 16, ef_construction = 64);
+  recovery cost    : measured in output/restore-test.log. That measured time
+                     IS this asset's RTO.
+
+asset: base-model-checkpoint
+  bytes not stored : 4.7 GB
+  why              : an open-weight checkpoint anyone can re-pull. We store
+                     the digest, which is what a recovery actually needs.
+  # base-model-checkpoint - REPRODUCIBLE. Do not back up the bytes.
+  # Recovery means re-pulling this exact digest. Never pull ":latest" - a tag that
+  # moves is not a recovery point.
+  source:  oci://registry.ollama.ai/library/llama3.1:8b-instruct-q4_K_M
+  digest:  sha256:9f2c7ab41d5e6b08c3f1aa77de204c9b6e5183ffb0aa4c2d3e9017bb5c6d8e41
+  size_gb: 4.7
+  recovery_command: ollama pull llama3.1:8b-instruct-q4_K_M
+
+Why this is a decision and not laziness: storing derived bytes makes the
+backup window longer and the storage bill bigger without making recovery any
+faster. What has to be protected is the SOURCE embeddings and the digest pin.
+Both of those are backed up above.

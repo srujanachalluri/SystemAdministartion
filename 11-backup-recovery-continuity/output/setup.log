@@ -1,0 +1,24 @@
+
+=== 1/5  Files that make up the estate ===
+
+=== 2/5  Prompt library (a real git repo, so we can bundle it offsite) ===
+commits in prompt library: 1
+
+=== 3/5  Evaluation datasets and configs ===
+datasets and configs written
+
+=== 4/5  Vector store: Postgres + pgvector ===
+NOTICE:  extension "vector" already exists, skipping
+rows in documents  : 512
+distinct vectors   : 512  <- must match the row count
+table size         : 1024 kB
+hnsw index size    : 1032 kB  <- bytes we will NOT back up
+
+=== 5/5  Backup targets: local archive folder, and two object-locked buckets ===
+local archive folder: /home/codespace/gf-backup-local
+(gf-ai-worm already exists)
+(gf-ai-gov already exists)
+Object locking 'COMPLIANCE' is configured for 30DAYS.
+Object locking 'GOVERNANCE' is configured for 30DAYS.
+
+The estate is up. Next:  ./code/backup_ai_estate.sh

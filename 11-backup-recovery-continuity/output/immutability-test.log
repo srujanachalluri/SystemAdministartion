@@ -1,0 +1,94 @@
+================================================================
+ IMMUTABILITY TEST - attacking our own backups on purpose
+================================================================
+ run at (UTC) : 2026-07-30T15:54:58Z
+ target       : a disposable canary object. Real assets are not touched.
+----------------------------------------------------------------
+A - how the buckets are actually configured on the server
+$ mc retention info --default gf/gf-ai-worm
+Object locking 'COMPLIANCE' is configured for 30DAYS.
+$ mc retention info --default gf/gf-ai-gov
+Object locking 'GOVERNANCE' is configured for 30DAYS.
+$ mc version info gf/gf-ai-worm
+gf/gf-ai-worm versioning is enabled
+
+Object Lock requires versioning, and it can only be switched on when a bucket
+is CREATED. 'mc mb --with-lock' is a one-way door. You cannot add it later to a
+bucket you already have.
+----------------------------------------------------------------
+B - plant a canary in the COMPLIANCE bucket and look at its lock
+$ mc stat gf/gf-ai-worm/canary/canary-2026-07-30T15-54-58Z.txt
+    Name      : canary-2026-07-30T15-54-58Z.txt
+    Size      : 55 B   
+      X-Amz-Object-Lock-Retain-Until-Date: 2026-08-29T15:54:59.177Z 
+      X-Amz-Object-Lock-Mode             : COMPLIANCE 
+    version id of the good copy: 12d5481c-2c63-41bc-90a1-de803e0cbb25
+PASS  the canary inherited COMPLIANCE retention from the bucket default
+      (nobody had to remember to set it per file, which is the point)
+----------------------------------------------------------------
+C - ATTACK 1: delete that specific version. This is the attack that matters.
+$ mc rm --version-id 12d5481c-2c63-41bc-90a1-de803e0cbb25 <canary>
+    mc: <ERROR> Failed to remove `gf/gf-ai-worm/canary/canary-2026-07-30T15-54-58Z.txt`. Object, 'canary/canary-2026-07-30T15-54-58Z.txt (Version ID=12d5481c-2c63-41bc-90a1-de803e0cbb25)' is WORM protected and cannot be overwritten
+PASS  version-level delete was REFUSED by COMPLIANCE retention
+----------------------------------------------------------------
+D - ATTACK 2: the same delete, now with the governance bypass flag.
+On a COMPLIANCE object this must still fail. That is the whole difference
+between the two modes.
+$ mc rm --bypass --version-id 12d5481c-2c63-41bc-90a1-de803e0cbb25 <canary>
+    mc: <ERROR> Failed to remove `gf/gf-ai-worm/canary/canary-2026-07-30T15-54-58Z.txt`. Object, 'canary/canary-2026-07-30T15-54-58Z.txt (Version ID=12d5481c-2c63-41bc-90a1-de803e0cbb25)' is WORM protected and cannot be overwritten
+PASS  bypass was REFUSED on COMPLIANCE - even root cannot shorten the retention
+----------------------------------------------------------------
+E - ATTACK 3: a plain rm with no version id. This SUCCEEDS, and that is fine.
+It writes a delete marker. The file looks gone. The locked version is not.
+This is the step that fooled me the first time.
+    Created delete marker `gf/gf-ai-worm/canary/canary-2026-07-30T15-54-58Z.txt` (versionId=feecedd6-df21-48d1-9621-7f21001eda98).
+
+$ mc ls gf/gf-ai-worm/canary/     # normal listing: looks deleted
+    (nothing listed - the delete marker is hiding it)
+
+$ mc ls --versions <canary>                    # version listing: still there
+    [2026-07-30 15:54:59 UTC]     0B STANDARD feecedd6-df21-48d1-9621-7f21001eda98 v2 DEL canary-2026-07-30T15-54-58Z.txt
+    [2026-07-30 15:54:59 UTC]    55B STANDARD 12d5481c-2c63-41bc-90a1-de803e0cbb25 v1 PUT canary-2026-07-30T15-54-58Z.txt
+
+$ mc cat --version-id 12d5481c-2c63-41bc-90a1-de803e0cbb25 <canary> | sha256sum
+    archived version sha256 : a2bcad93b21635586dd33b7c1a8dd805d34407dfb3622dca0cbfd2a88ea04449
+    original sha256         : a2bcad93b21635586dd33b7c1a8dd805d34407dfb3622dca0cbfd2a88ea04449
+PASS  the good bytes are still readable and still verify after that 'successful' delete
+PASS  recovered: removed the delete marker and the object is visible again
+----------------------------------------------------------------
+F - ATTACK 4: overwrite it with garbage, which is what ransomware really does.
+$ mc cat <canary>                       # current version: encrypted
+    ENCRYPTED_BY_RANSOMWARE
+$ mc cat --version-id 12d5481c-2c63-41bc-90a1-de803e0cbb25 <canary>    # archived version: intact
+    canary 2026-07-30T15-54-58Z - these are the good bytes
+PASS  the overwrite made a NEW version; the locked good version survived it
+----------------------------------------------------------------
+G - the contrast: the GOVERNANCE bucket has a deliberate escape hatch
+$ mc rm --version-id a37cfc4d-e325-47df-85bb-ca48d2444980 <gov canary>             # ordinary delete
+    mc: <ERROR> Failed to remove `gf/gf-ai-gov/canary/canary-2026-07-30T15-54-58Z.txt`. Object, 'canary/canary-2026-07-30T15-54-58Z.txt (Version ID=a37cfc4d-e325-47df-85bb-ca48d2444980)' is WORM protected and cannot be overwritten
+PASS  GOVERNANCE also refuses an ordinary version delete - it is a real lock
+$ mc rm --bypass --version-id a37cfc4d-e325-47df-85bb-ca48d2444980 <gov canary>    # privileged and deliberate
+    Removed `gf/gf-ai-gov/canary/canary-2026-07-30T15-54-58Z.txt` (versionId=a37cfc4d-e325-47df-85bb-ca48d2444980).
+PASS  GOVERNANCE bypass ALLOWED - the same call that was refused in attack 2
+      This is the capability we keep on purpose: a member asking us to delete
+      their document, or a password accidentally committed to a prompt file.
+----------------------------------------------------------------
+checks passed: 8    checks failed: 0
+
+WHAT THIS PROVES
+
+COMPLIANCE tier - the fine-tuned weights and the eval datasets:
+  A specific version cannot be deleted. Not with a normal delete, not with a
+  bypass, not with the root credential, not until the 30-day retention runs
+  out. An overwrite becomes a new version and leaves the old one readable.
+  Ransomware running with our own credentials cannot destroy the recovery point.
+
+GOVERNANCE tier - the vector dumps, prompts and configs:
+  The same delete is refused for an ordinary caller but allowed for a
+  privileged one who passes --bypass. We keep that hatch deliberately. The
+  trade-off is that a sufficiently privileged attacker could use it too, and
+  that is exactly why the weights are NOT in this tier.
+
+And the thing that is easy to get wrong: a plain delete on a versioned bucket
+only writes a delete marker. Remove the marker and the object is back.
+Immutability lives at the version level, not at the filename level.

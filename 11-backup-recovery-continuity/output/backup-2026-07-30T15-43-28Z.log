@@ -1,0 +1,70 @@
+2026-07-30T15:43:28Z  backup stamp : 2026-07-30T15-43-28Z
+2026-07-30T15:43:28Z  source       : /home/codespace/gf-ai
+2026-07-30T15:43:28Z  copy 2       : /home/codespace/gf-backup-local/2026-07-30T15-43-28Z
+2026-07-30T15:43:28Z  copy 3       : http://127.0.0.1:9000  (gf-ai-worm and gf-ai-gov)
+2026-07-30T15:43:28Z  [1/5] prompt library and configs (irreplaceable, GOVERNANCE lock)
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/prompts/prompts-2026-07-30T15-43-28Z.bundle` -> `gf/gf-ai-gov/prompts/prompts-2026-07-30T15-43-28Z.bundle`
+┌───────┬─────────────┬──────────┬─────────────┐
+│ Total │ Transferred │ Duration │ Speed       │
+│ 686 B │ 686 B       │ 00m00s   │ 19.20 KiB/s │
+└───────┴─────────────┴──────────┴─────────────┘
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/configs/configs-2026-07-30T15-43-28Z.tgz` -> `gf/gf-ai-gov/configs/configs-2026-07-30T15-43-28Z.tgz`
+┌───────┬─────────────┬──────────┬─────────────┐
+│ Total │ Transferred │ Duration │ Speed       │
+│ 478 B │ 478 B       │ 00m00s   │ 31.07 KiB/s │
+└───────┴─────────────┴──────────┴─────────────┘
+2026-07-30T15:43:28Z  [2/5] pgvector source dump (irreplaceable, GOVERNANCE lock)
+2026-07-30T15:43:28Z        dump size: 580K
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/vectors/vectors-2026-07-30T15-43-28Z.dump` -> `gf/gf-ai-gov/vectors/vectors-2026-07-30T15-43-28Z.dump`
+┌────────────┬─────────────┬──────────┬─────────────┐
+│ Total      │ Transferred │ Duration │ Speed       │
+│ 576.19 KiB │ 576.19 KiB  │ 00m00s   │ 24.23 MiB/s │
+└────────────┴─────────────┴──────────┴─────────────┘
+2026-07-30T15:43:28Z  [3/5] fine-tuned weights (irreplaceable, COMPLIANCE lock)
+`/home/codespace/gf-ai/models/finetuned/gf-rag-v3.safetensors` -> `gf/gf-ai-worm/models/finetuned/gf-rag-v3.safetensors`
+`/home/codespace/gf-ai/models/finetuned/adapter_config.json` -> `gf/gf-ai-worm/models/finetuned/adapter_config.json`
+┌───────────┬─────────────┬──────────┬─────────────┐
+│ Total     │ Transferred │ Duration │ Speed       │
+│ 25.00 MiB │ 25.00 MiB   │ 00m00s   │ 41.60 MiB/s │
+└───────────┴─────────────┴──────────┴─────────────┘
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/models/weights-2026-07-30T15-43-28Z.sha256` -> `gf/gf-ai-worm/models/manifests/weights-2026-07-30T15-43-28Z.sha256`
+┌───────┬─────────────┬──────────┬────────────┐
+│ Total │ Transferred │ Duration │ Speed      │
+│ 178 B │ 178 B       │ 00m00s   │ 6.29 KiB/s │
+└───────┴─────────────┴──────────┴────────────┘
+2026-07-30T15:43:29Z  [4/5] eval datasets and checksum manifest (irreplaceable, COMPLIANCE lock)
+562af958f7085e7890c87b4a86d2c963e7952b9b2290181081fe3edaea83564e  ./eval_qa.jsonl
+093bfe4e1d92ab036b064f3970b6a2c7b52268703cf597a15c9cdb41fef2a884  ./regression_qa.jsonl
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/datasets/eval_qa.jsonl` -> `gf/gf-ai-worm/datasets/eval_qa.jsonl`
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/datasets/regression_qa.jsonl` -> `gf/gf-ai-worm/datasets/regression_qa.jsonl`
+┌───────┬─────────────┬──────────┬─────────────┐
+│ Total │ Transferred │ Duration │ Speed       │
+│ 616 B │ 616 B       │ 00m00s   │ 33.37 KiB/s │
+└───────┴─────────────┴──────────┴─────────────┘
+`/home/codespace/gf-backup-local/2026-07-30T15-43-28Z/datasets/manifests/datasets-2026-07-30T15-43-28Z.sha256` -> `gf/gf-ai-worm/datasets/manifests/datasets-2026-07-30T15-43-28Z.sha256`
+┌───────┬─────────────┬──────────┬─────────┐
+│ Total │ Transferred │ Duration │ Speed   │
+│ 170 B │ 170 B       │ 00m00s   │ 353 B/s │
+└───────┴─────────────┴──────────┴─────────┘
+2026-07-30T15:43:30Z  [5/5] reproducible tier: writing a rebuild receipt instead of copying bytes
+`/workspaces/SystemAdministartion/11-backup-recovery-continuity/output/reproducible-receipt-2026-07-30T15-43-28Z.txt` -> `gf/gf-ai-gov/receipts/reproducible-receipt-2026-07-30T15-43-28Z.txt`
+┌──────────┬─────────────┬──────────┬──────────────┐
+│ Total    │ Transferred │ Duration │ Speed        │
+│ 1.51 KiB │ 1.51 KiB    │ 00m00s   │ 161.21 KiB/s │
+└──────────┴─────────────┴──────────┴──────────────┘
+2026-07-30T15:43:30Z  checking that the offsite copy actually landed
+--- gf-ai-worm (COMPLIANCE) ---
+[2026-07-30 15:43:29 UTC]   433B STANDARD datasets/eval_qa.jsonl
+[2026-07-30 15:43:29 UTC]   170B STANDARD datasets/manifests/datasets-2026-07-30T15-43-28Z.sha256
+[2026-07-30 15:43:29 UTC]   183B STANDARD datasets/regression_qa.jsonl
+[2026-07-30 15:43:28 UTC]   422B STANDARD models/finetuned/adapter_config.json
+[2026-07-30 15:43:29 UTC]  25MiB STANDARD models/finetuned/gf-rag-v3.safetensors
+[2026-07-30 15:43:29 UTC]   178B STANDARD models/manifests/weights-2026-07-30T15-43-28Z.sha256
+--- gf-ai-gov (GOVERNANCE) ---
+[2026-07-30 15:43:28 UTC]   478B STANDARD configs/configs-2026-07-30T15-43-28Z.tgz
+[2026-07-30 15:43:28 UTC]   686B STANDARD prompts/prompts-2026-07-30T15-43-28Z.bundle
+[2026-07-30 15:43:30 UTC] 1.5KiB STANDARD receipts/reproducible-receipt-2026-07-30T15-43-28Z.txt
+[2026-07-30 15:43:28 UTC] 576KiB STANDARD vectors/vectors-2026-07-30T15-43-28Z.dump
+2026-07-30T15:43:30Z  backup finished. Stamp saved to output/LATEST_STAMP
+2026-07-30T15:43:30Z  A backup is not a backup until it has been restored. Next:
+2026-07-30T15:43:30Z    ./code/restore_test.sh $(cat output/LATEST_STAMP) | tee output/restore-test.log

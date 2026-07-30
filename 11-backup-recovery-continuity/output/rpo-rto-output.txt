@@ -1,0 +1,36 @@
+Estate: gf-rag-assistant
+Review cadence: quarterly
+Last restore test: FILL_IN
+
+asset                   class           lock        crit    RPO min  RTO min
+----------------------------------------------------------------------------
+fine-tuned-weights      irreplaceable   COMPLIANCE  yes        1440       45
+vector-db-source        irreplaceable   GOVERNANCE  yes          60       30
+vector-db-hnsw-index    reproducible    none        yes           0       20
+eval-datasets           irreplaceable   COMPLIANCE  no         1440       10
+prompt-library          irreplaceable   GOVERNANCE  yes           5       10
+app-configs             irreplaceable   GOVERNANCE  yes           5       10
+base-model-checkpoint   reproducible    none        yes           0       60
+----------------------------------------------------------------------------
+
+RECOVERY POINT OBJECTIVE
+  worst case, any asset   :  1440 min   (weights and eval sets, which only change on a planned retrain)
+  service critical        :    60 min   (content and behaviour, what congregants would actually lose)
+
+RECOVERY TIME OBJECTIVE, serial recovery
+  chapter formula         :   125 min
+  true critical path      :   175 min   <-- the number I will defend
+
+  The two differ by 50 minutes. The chapter formula scores
+  reproducible cache-not-backup assets at zero, but the base model
+  re-pull is real downtime that congregants would sit through.
+  Reporting the smaller number would be dishonest.
+
+WEAKEST LINK ON THE CRITICAL PATH
+  base-model-checkpoint - 60 min, 34% of the total RTO
+
+CLASSIFICATION SUMMARY
+  irreplaceable, back these up          : fine-tuned-weights, vector-db-source, eval-datasets, prompt-library, app-configs
+  reproducible, rebuild not store       : vector-db-hnsw-index, base-model-checkpoint
+  COMPLIANCE lock, no delete at all     : fine-tuned-weights, eval-datasets
+  GOVERNANCE lock, deliberate hatch     : vector-db-source, prompt-library, app-configs
