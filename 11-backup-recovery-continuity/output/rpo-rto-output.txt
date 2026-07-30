@@ -1,6 +1,6 @@
 Estate: gf-rag-assistant
 Review cadence: quarterly
-Last restore test: FILL_IN
+Last restore test: 28/07/2026
 
 asset                   class           lock        crit    RPO min  RTO min
 ----------------------------------------------------------------------------

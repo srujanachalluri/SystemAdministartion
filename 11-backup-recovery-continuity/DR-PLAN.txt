@@ -7,7 +7,7 @@ Owner:            IT steward, Grace Fellowship
 Estate:           gf-rag-assistant
 Serves:           about 400 congregants a week
 Plan reviewed:    quarterly, and again after every retrain
-Last restore test: FILL IN THE DATE YOU RAN restore_test.sh
+Last restore test: 28/07/2026  (PASSED, 0 checks failed)
 
 Project 11, Chapter 11 - Backup, Recovery, and the Ark You Build
 Before the Flood.
@@ -332,25 +332,41 @@ WEAKEST LINK ON THE CRITICAL PATH
 PREDICTED VERSUS MEASURED INDEX REBUILD
 
   predicted (in the register) : 20 minutes
-  measured (restore_test.sh)  : 
+  measured (restore_test.sh)  : 0.18 seconds, on 512 chunks
+                                (see output/restore-test.log)
 
-  This is the honest-gap line the chapter asks for. Fill in the
-  measured number from your restore test run, then write one
-  sentence here about the gap.
+  Those two numbers are not directly comparable, and pretending
+  they are would be the easy mistake here. The lab has 512 chunks.
+  Grace Fellowship's real corpus is closer to 180,000. So the
+  measured figure has to be scaled before it means anything.
 
-  For context on how to read your number: the lab has 512 chunks.
-  Grace Fellowship's real corpus is closer to 180,000 chunks. HNSW
-  build time grows roughly with n log n, so a lab measurement of
-  well under a second does NOT mean production rebuilds in under a
-  second. Scaling 512 to 180,000 is about a 350x increase in rows
-  and roughly 500x in work, so a 0.6 second lab build implies
-  something in the region of 5 minutes at production scale.
+  HNSW build time grows roughly with n log n. Going from 512 to
+  180,000 chunks is about 350x more rows, and the log factor adds
+  roughly 1.9x on top, so about 660x the work:
 
-  Which means my 20 minute prediction was probably pessimistic by
-  about 4x. That is still the right direction to be wrong in for a
-  DR estimate, but it is worth correcting, because a padded RTO on
-  one asset hides where the real time goes - and in this estate
-  the real time is the base model download, not the index.
+      0.18 s  x  660  =  approximately 2 minutes
+
+  So my prediction of 20 minutes was pessimistic by roughly 10x.
+
+  Being wrong in that direction is the safer error for a DR
+  estimate - I budgeted more downtime than I need rather than
+  less. But it is still worth correcting, for a reason that is not
+  about this asset at all: a padded RTO on one line hides where
+  the real time actually goes. With 20 minutes sitting in the
+  register, the index rebuild looks like the third-largest cost in
+  the estate. At 2 minutes it is close to free, and the base model
+  download stands out even more clearly as the only thing worth
+  fixing.
+
+  I have left rto_minutes at 20 in the register rather than
+  changing it to 2, and that is deliberate. A 0.18 second
+  measurement on 512 rows is not evidence about 180,000 rows; it
+  is one data point at the wrong scale. The honest position is
+  that the real number is probably near 2 minutes and I have not
+  proven it. The correct next step is to measure the rebuild
+  against a corpus of realistic size, not to write my own
+  extrapolation into the register as though it were measured.
+  Committed numbers should be things I have observed.
 
 
 ----------------------------------------------------------------

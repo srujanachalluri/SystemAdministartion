@@ -20,7 +20,7 @@
 estate: gf-rag-assistant
 owner: it-steward@gracefellowship.example
 review_cadence: quarterly        # and again after every retrain, because the estate changes shape
-last_restore_test: FILL_IN       # put the date you ran restore_test.sh here
+last_restore_test: 28/07/2026    # PASSED, 0 checks failed - output/restore-test.log
 serves: about 400 congregants a week
 
 assets:
@@ -67,15 +67,21 @@ assets:
     lock_mode: none
     critical_path: true
     rpo_minutes: 0
-    rto_minutes: 20
+    rto_minutes: 20                 # predicted. measured: 0.18 s on 512 chunks.
+                                    # See the note below before changing this.
     justification: >
       A graph derived entirely from embeddings we already protect, so backing it up
       would mean paying storage for bytes we can regenerate. It is still on the
       critical path: without it, retrieval falls back to a sequential scan and the
       assistant is too slow to be usable, so "reproducible" does not mean
-      "unimportant". The 20 minutes here is my PREDICTION before measuring.
-      restore_test.sh measures the real number. The gap between the two is discussed
-      in DR-PLAN.txt section 5, and it is the most useful thing in this file.
+      "unimportant". The 20 minutes was my prediction before measuring. The restore
+      test measured 0.18 seconds - but on 512 chunks, and the real corpus is nearer
+      180,000. Scaled by n log n that implies roughly 2 minutes in production, so my
+      prediction was about 10x pessimistic. I have deliberately NOT changed
+      rto_minutes to 2, because that figure is my extrapolation and not something I
+      measured, and a register should hold observed numbers rather than arithmetic.
+      The correct fix is to measure a rebuild at realistic corpus size. Full
+      reasoning in DR-PLAN.txt section 5.
 
   - name: eval-datasets
     class: irreplaceable
