@@ -332,7 +332,7 @@ WEAKEST LINK ON THE CRITICAL PATH
 PREDICTED VERSUS MEASURED INDEX REBUILD
 
   predicted (in the register) : 20 minutes
-  measured (restore_test.sh)  : FILL IN FROM output/restore-test.log
+  measured (restore_test.sh)  : 
 
   This is the honest-gap line the chapter asks for. Fill in the
   measured number from your restore test run, then write one

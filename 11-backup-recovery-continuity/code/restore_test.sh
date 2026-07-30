@@ -122,11 +122,16 @@ fi
 # --------------------------------------------------------------------------
 line; echo "STEP 5 - MEASURED index rebuild. This measured time IS the RTO for the derived tier."
 echo "rebuilding: CREATE INDEX documents_embedding_hnsw USING hnsw (m=16, ef_construction=64)"
-{ /usr/bin/time -p psql -q -d "$GF_SCRATCH_DB" -c \
-    "CREATE INDEX documents_embedding_hnsw ON documents USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);" \
-  ; } 2> "$SCRATCH/idx.time"
-sed 's/^/    /' "$SCRATCH/idx.time" | grep -E 'real|user|sys'
-REAL=$(awk '/^real/ {print $2}' "$SCRATCH/idx.time")
+# Timed with python3 rather than /usr/bin/time. That is not a style preference:
+# /usr/bin/time is a separate package on Debian and is NOT installed in a GitHub
+# Codespace. The first run of this script died right here, at the one step whose
+# whole purpose is to produce a number. python3 is always present, and bash's
+# built-in SECONDS is integer-only, which is useless for a sub-second rebuild.
+T0=$(python3 -c 'import time; print(time.time())')
+psql -q -d "$GF_SCRATCH_DB" -c \
+  "CREATE INDEX documents_embedding_hnsw ON documents USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);"
+T1=$(python3 -c 'import time; print(time.time())')
+REAL=$(python3 -c "print(f'{$T1 - $T0:.2f}')")
 IDX_SIZE=$(psql -tA -d "$GF_SCRATCH_DB" -c "SELECT pg_size_pretty(pg_relation_size('documents_embedding_hnsw'));" | tr -d ' ')
 echo
 echo "  MEASURED INDEX REBUILD TIME : ${REAL} seconds"
