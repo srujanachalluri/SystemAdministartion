@@ -1,0 +1,11 @@
+donor_id,first_name,last_name,city,gift_amount_usd,fund,gift_date
+D-1001,Amara,Okonkwo,Springfield,250,Disaster Relief,2026-06-02
+D-1002,Nathan,Brightwater,Cedar Falls,1000,Disaster Relief,2026-06-02
+D-1003,Priya,Ramachandran,Lakeview,75,Clean Water,2026-06-03
+D-1004,Marcus,Delacroix,Fairhaven,500,Disaster Relief,2026-06-03
+D-1005,Hana,Sorensen,Millbrook,120,Food Security,2026-06-04
+D-1006,Joel,Adeyemi,Ashgrove,2500,Disaster Relief,2026-06-04
+D-1007,Rosa,Villanueva,Northport,60,Clean Water,2026-06-05
+D-1008,Tobias,Lindqvist,Greenridge,340,Food Security,2026-06-05
+D-1009,Sofia,Marchetti,Westbend,150,Disaster Relief,2026-06-06
+D-1010,Elias,Nakamura,Stonecreek,800,Clean Water,2026-06-06

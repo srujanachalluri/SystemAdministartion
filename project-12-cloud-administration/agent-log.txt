@@ -1,0 +1,90 @@
+agent-log.txt — Project 12
+Grace & Mercy Relief / donor-letters workload
+AI policy: Phase 2. AI was used. This log records what I delegated, what the
+agent produced, where it was wrong, and where I had to intervene.
+
+Agent used: Claude (Claude Code CLI), plus the provider's own docs and console.
+
+FILL IN the bracketed [ ] items yourself as you work. Do not leave them blank —
+the log is graded on honesty, not on making the agent look good.
+
+===============================================================================
+ENTRY 1 — Scaffolding the repository
+-------------------------------------------------------------------------------
+Delegated : Build the repo layout — deploy script, tag config, adapted FinOps
+            script, the donor-letter workload against an OpenAI-compatible
+            endpoint, and a reconcile script.
+Agent did : Produced all of the above, including a --mock mode so the pipeline
+            could be tested with zero spend before any billable call.
+I checked : Read every file before running it. Confirmed no real key appears
+            anywhere, that .env is gitignored, and that the donor CSV contains
+            invented people only.
+Verdict   : Accepted.
+
+===============================================================================
+ENTRY 2 — Prices (THIS IS THE ONE THAT MATTERS)
+-------------------------------------------------------------------------------
+Delegated : Asked for the current per-token price of the model I planned to use.
+Agent did : Offered a price from its training data and from the mid-2026
+            snapshot table in code/token_cost.py.
+Problem   : Both are stale by construction. token_cost.py says so in its own
+            docstring: "All prices here are MID-2026 SNAPSHOTS and WILL have
+            drifted." An agent quoting a memorized price is quoting a number
+            nobody re-verified. The classic failure modes are (a) citing a price
+            that was accurate 18 months ago, (b) confusing per-1M-token rates
+            with per-1K, and (c) ignoring that output tokens cost 4–8x input.
+I did     : Opened the provider's live pricing page in the console and read the
+            numbers myself.
+  Price page URL   : [ paste the pricing URL you actually opened ]
+  Date pulled      : [ YYYY-MM-DD ]
+  Model ID         : [ exact model ID, not the marketing name ]
+  Input  $ / 1M    : [ ]
+  Output $ / 1M    : [ ]
+  Output/input mult: [ ]x
+Verdict   : Agent's number REJECTED. Used the console number for every
+            calculation in COST_REPORT.docx.
+
+===============================================================================
+ENTRY 3 — Unit check on the prediction
+-------------------------------------------------------------------------------
+Delegated : Sanity-check the predicted total before running traffic.
+Problem   : [ Did the agent's arithmetic match token_cost.py? If a number was
+              off by 1000x, that is a per-1K vs per-1M mix-up — write it down. ]
+I did     : Re-ran the prediction with code/token_cost.py, which is the
+            professor's own calculator, and used ITS output as the prediction of
+            record. Wrote the prediction down BEFORE generating traffic.
+Verdict   : [ agreed / disagreed — say which, and by how much ]
+
+===============================================================================
+ENTRY 4 — Token-shape estimate
+-------------------------------------------------------------------------------
+Delegated : Estimate input and output tokens per request for the letter prompt.
+Agent did : Estimated ~[ ] input and ~[ ] output tokens per request.
+Reality   : The measured run produced [ ] input and [ ] output per request.
+Why gap   : [ e.g. the model wrote shorter letters than the 300-token cap, so
+              output came in under estimate; or the system prompt was longer
+              than counted. ]
+Verdict   : [ close enough / materially wrong ]
+
+===============================================================================
+ENTRY 5 — Things the agent could NOT do
+-------------------------------------------------------------------------------
+- It could not create my budget, alert, or hard cap. I set those in the provider
+  console myself, before traffic. See deploy/budget-alert.md.
+- It could not read my actual bill. I pulled the cost export myself.
+- It could not tell me whether $[ ] per month is defensible to a board that was
+  already burned once. That judgment is mine, and it is in COST_REPORT.docx.
+
+===============================================================================
+ENTRY 6 — [ add your own ]
+-------------------------------------------------------------------------------
+[ Anything else the agent got wrong, or any point where you overrode it.
+  If nothing else went wrong, say that plainly — but be sure it is true. ]
+
+===============================================================================
+SUMMARY
+-------------------------------------------------------------------------------
+AI was genuinely useful for scaffolding, boilerplate, and shaping scripts.
+It was NOT reliable on prices, units, or anything requiring a live console
+lookup. Every dollar figure in COST_REPORT.docx traces to a number I read off
+the provider's own billing pages on [ date ], not to anything the agent asserted.

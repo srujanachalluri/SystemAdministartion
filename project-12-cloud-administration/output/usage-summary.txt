@@ -1,0 +1,15 @@
+RUN SUMMARY -- Project 12 donor-letters workload
+mode              : REAL (billable)
+provider base_url : https://openrouter.ai/api/v1
+model             : openai/gpt-oss-20b:free
+throttle          : 15 req/min
+tags              : project=donor-letters env=dev team=it-ops
+requests attempted: 40
+requests OK       : 40
+requests failed   : 0
+input  tokens     : 6,168
+output tokens     : 11,090
+avg in  / request : 154.2
+avg out / request : 277.2
+wall clock        : 622.3s
+per-request log   : output/run-log.jsonl

@@ -1,0 +1,14 @@
+{
+  "_comment": "Cost-allocation tags for the Grace & Mercy donor-letters workload. Applied at the provider BEFORE any traffic, so every dollar on the bill can be traced to a project, an environment, and an owning team.",
+  "tags": {
+    "project": "donor-letters",
+    "env": "dev",
+    "team": "it-ops"
+  },
+  "applied_to": [
+    "API key / project (provider billing console)",
+    "every request logged in output/run-log.jsonl"
+  ],
+  "grouped_by_in_cost_export": "project",
+  "note": "The provider's usage export is filtered by the 'project' tag. Any spend that shows up untagged is treated as an incident, not a rounding error."
+}
