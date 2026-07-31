@@ -1,0 +1,67 @@
+# slo.yml - the promise, the budget, and what breaks it.
+# This file is a human judgement. It was NOT chosen by a coding agent.
+# The reasoning behind every number here is written out in REPORT.docx.
+
+service: school-help-desk-rag-bot
+
+sli:
+  name: groundedness_rate
+  definition: >
+    grounded answers / total answered questions, where "grounded" means every
+    factual claim in the answer is supported by the retrieved policy context.
+    An honest refusal counts as grounded. Availability is NOT the SLI - the
+    incident that caused this project happened while the service was 100% up.
+  measured_by: evals/judge.py + sampled production answers
+
+slo:
+  target: 0.99            # 99% of answers grounded
+  window: 30d rolling
+  rationale: >
+    Not 99.9%. This bot answers staff questions about school safety and student
+    accounts. It is read by adults who can and do verify with the Help Desk, and
+    every answer cites the policy doc it came from, so a wrong answer is
+    recoverable. 99.9% would cost far more in eval and human review than the
+    marginal risk removed. Not 95% either - at 20,000 answers a month that is
+    1,000 wrong answers, which is an unacceptable number of staff acting on
+    fabricated safety procedure.
+
+error_budget:
+  window_requests: 20000  # ~monthly volume
+  allowed_bad: 200        # (1 - 0.99) * 20000
+  policy:
+    - burn < 75%   : ship normally
+    - burn >= 75%  : freeze risky deploys, no model or prompt changes
+    - burn > 100%  : stop shipping, roll back to last-good model, stabilise
+
+ci_gate:
+  min_groundedness: 0.90
+  min_pass_rate: 0.90
+  rationale: >
+    Lower than the 0.99 production SLO on purpose. The eval set is adversarial -
+    it is weighted toward negative permissions, near-duplicate numbers and
+    out-of-corpus questions, which are far rarer in real traffic. Holding an
+    adversarial set to the production number would either block every build or
+    push us to soften the eval set, and a softened eval set is worse than none.
+
+drift:
+  metric: PSI on prompt length and retrieval score
+  reference: monitoring/data/reference.txt
+  current: monitoring/data/current.txt
+  thresholds: { ok: 0.10, watch: 0.20 }
+  blind_spot: >
+    PSI sees DATA drift only. When the 2026 policy documents were updated the
+    questions did not change at all, so PSI stayed flat while every answer went
+    stale. That is CONCEPT drift and this metric cannot see it. It is caught by
+    the corpus-version check and by human spot review, not by PSI.
+
+rollback_vs_retrain:
+  rollback_if:
+    - eval gate fails on main after a deploy
+    - groundedness drops below 0.95 in any 24h window
+    - any fabricated safety-procedure answer is reported by staff
+  retrain_or_reindex_if:
+    - groundedness is stable but WRONG because the source policy docs changed
+    - PSI > 0.20 sustained for 7 days with no code change
+  note: >
+    Rollback is the reflex, retrain is the decision. Rollback first, diagnose
+    second. Retraining under incident pressure is how you ship a second bug.

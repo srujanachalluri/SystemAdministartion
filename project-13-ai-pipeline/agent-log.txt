@@ -1,0 +1,115 @@
+AGENT LOG - Project 13: A Pipeline for an AI Application
+Student: Srujana Challuri
+Agent used: Claude Code (Opus 5), Phase 2 agentic AI enabled
+Repo: https://github.com/srujanachalluri/SystemAdministration
+
+This log records every task I delegated to the coding agent, what it produced,
+where it was wrong, and where I intervened. It also records the three decisions
+I did NOT delegate: the SLO number, the eval rubric, and the rollback-vs-retrain
+policy.
+
+================================================================================
+WHAT I DECIDED MYSELF (NOT DELEGATED)
+================================================================================
+
+D1. THE SLO NUMBER - 99% groundedness over a rolling 30-day window.
+    I chose this, not the agent. My reasoning is written out in REPORT.docx and
+    slo.yml. Short version: the readers are adults who can verify with the Help
+    Desk, and every answer is traceable to a policy document, so a wrong answer
+    is recoverable rather than final. That argues against 99.9%, which would
+    cost far more in eval and human review than the marginal risk it removes.
+    But at ~20,000 answers a month, 95% means 1,000 staff acting on fabricated
+    safety procedure, which I am not willing to sign for. 99% is where I am
+    willing to put my name.
+
+D2. THE EVAL RUBRIC AND THE EVAL SET.
+    I wrote the ten cases and chose what each one probes. I deliberately
+    weighted the set toward the failure modes that caused the real incident:
+    negative permissions (C05 - the answer a helpful bot wants to get wrong),
+    safety-critical procedure (C06 - the exact lockdown question the bot
+    fabricated), near-duplicate numbers in one document (C04 vs C08), and an
+    out-of-corpus question the bot must refuse rather than answer from an
+    adjacent document (C10). Ten well-aimed cases, not fifty generic ones.
+
+D3. ROLLBACK VS RETRAIN.
+    Written in slo.yml before any incident, on purpose. Rollback is the reflex;
+    retrain is the decision. Any fabricated safety answer, or groundedness under
+    0.95 in a 24-hour window, rolls back immediately. Retraining/re-indexing is
+    only correct when the answers are stable but stale because the source policy
+    documents changed - which is what happened with the 2026 policy update.
+
+================================================================================
+DELEGATED TASKS
+================================================================================
+
+T1. TASK: Adapt code/ci.yml into a working pipeline for this repo layout, with
+    the required stage order.
+    AGENT BUILT: .github/workflows/ci.yml with install -> lint -> unit tests ->
+    secret scan -> eval gate, permissions: contents: read.
+    WHERE IT WAS WRONG: the starter file calls `gitleaks detect` directly, but
+    gitleaks is not preinstalled on ubuntu-latest, so the step would have failed
+    for the wrong reason - an infrastructure error dressed up as a security
+    finding. Also the whole workflow ran at repo root, but my project lives in a
+    subfolder of a multi-project repo.
+    MY INTERVENTION: I had it add an explicit pinned gitleaks v8.28.0 install
+    step, and set defaults.run.working-directory to project-13-ai-pipeline while
+    keeping the gitleaks steps at repo root so the scan covers the whole repo,
+    not just my folder.
+
+T2. TASK: Build the stubbed RAG service over a fixed policy corpus.
+    AGENT BUILT: app/rag_service.py - corpus loader, keyword retrieval,
+    extractive answer, plus a real LLM path behind OPENAI_API_KEY.
+    WHERE IT WAS WRONG: the first version always returned the best-matching
+    document, with no floor on the match score. That meant an out-of-corpus
+    question ("how much does a school lunch cost?") still got a confident answer
+    assembled from a loosely related policy doc. That is precisely the
+    adjacent-but-wrong hallucination that started this project.
+    MY INTERVENTION: I required a retrieval floor (min_score) and an explicit
+    refusal string, then wrote eval case C10 and unit tests to hold it there. I
+    raised the floor from 2 to 3 after C10 still slipped through at 2.
+
+T3. TASK: Adapt code/judge.py into an eval runner wired into CI.
+    AGENT BUILT: evals/judge.py, keeping the professor's rubric and temperature
+    0, adding a deterministic offline backend for when no API key is present.
+    WHERE IT WAS WRONG: the agent's first offline judge scored groundedness by
+    plain word overlap only. I tested it against a fabricated answer and it
+    passed - fabricated phone numbers and invented durations are short tokens
+    that barely move an overlap ratio.
+    MY INTERVENTION: I specified the extra hard rule myself: every token
+    containing a digit in the answer must appear verbatim in the context, no
+    exceptions. That is what actually catches "call 555-0142" and "within 20
+    minutes." I also insisted the judge report WHY a case failed, so a red build
+    is diagnosable instead of just red.
+
+T4. TASK: Produce the deliberate regression on a branch and prove the gate
+    catches it.
+    AGENT BUILT: the regressed _extractive_answer that appends a fabricated
+    hotline number, a fabricated release-by-text instruction, and a fabricated
+    20-minute SLA.
+    MY INTERVENTION: I chose what the regression should fabricate. I made it
+    contradict the lockdown policy specifically ("release the all clear by text
+    message" directly contradicts "never by text message"), because a regression
+    that only breaks a trivial fact proves nothing about a safety-critical bot.
+    VERIFIED RESULT: lint passed, all 7 unit tests passed, secret scan passed,
+    and the eval gate failed - groundedness 1.000 -> 0.100, exit code 1.
+    That separation is the whole point: only the eval gate could see it.
+
+T5. TASK: Wire the drift and error-budget monitoring.
+    AGENT BUILT: monitoring/psi.py and monitoring/error_budget.py taken from the
+    chapter code with only a lint fix, plus reference/current sample windows.
+    WHERE IT WAS WRONG: the agent initially described PSI as "drift monitoring,"
+    full stop, which is exactly the overclaim the chapter warns about.
+    MY INTERVENTION: I made the blind spot explicit in slo.yml and in
+    REPORT.docx. When the 2026 policy docs were updated, the questions did not
+    change at all, so PSI would have stayed flat while every answer went stale.
+    PSI cannot see concept drift. A human still has to look.
+
+================================================================================
+WHERE I DREW THE LINE
+================================================================================
+I let the agent write YAML, glue code, and test scaffolding. I did not let it
+choose the SLO, the eval cases, the groundedness threshold, or the rollback
+policy. Every time the agent offered a threshold, I replaced it with a number I
+could defend to the teacher who will act on this bot's answer about a lockdown.
+The agent is fast at building the apparatus. It has no standing to decide how
+often this service is allowed to be wrong.

@@ -1,0 +1,91 @@
+# .github/workflows/ci.yml
+# Project 13 - CI/CD pipeline for the school help-desk RAG support bot.
+#
+# The ORDER is the lesson. Cheap deterministic gates run FIRST and fail FAST.
+# The slow, paid, nondeterministic LLM eval gate runs LAST, and only after a
+# change has already passed everything a human could have caught for free.
+#
+#   install -> lint -> unit tests -> secret scan -> LLM EVAL GATE
+name: ai-app-ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Least privilege. This job can READ the repo and nothing else. It cannot push
+# to main, cannot open or merge a PR, cannot edit its own workflow file.
+# That matters specifically because a coding agent writes code that runs here:
+# an agent with write access to a protected branch could green its own gate.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: project-13-ai-pipeline
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      # ---------- Stage 1: build / install ----------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ---------- Stage 2: lint (free, deterministic) ----------
+      - name: Lint with ruff
+        run: ruff check .
+
+      # ---------- Stage 3: unit tests (free, deterministic) ----------
+      - name: Unit tests
+        run: pytest tests/unit -q
+
+      # ---------- Stage 4: secret scan (free, deterministic) ----------
+      # AI-written code leaks keys too. This runs before we spend a token.
+      - name: Install gitleaks
+        working-directory: .
+        run: |
+          curl -sSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+
+      # `gitleaks dir` scans the working tree. Findings are redacted so the scan
+      # never prints the secret it just found into a public build log.
+      - name: Secret scan
+        working-directory: .
+        run: gitleaks dir . --no-banner --redact --exit-code 1
+
+      # ---------- Stage 5: THE EVAL GATE (slow, paid, nondeterministic) ----------
+      # Gates on a GROUNDEDNESS RATE over a fixed eval set, not on a vibe.
+      # A quality regression fails the build exactly like a failing unit test.
+      #
+      # MODEL_ID is PINNED - never "latest". OPENAI_BASE_URL selects the
+      # provider (OpenAI, any vendor's /v1, or a self-hosted vLLM). A hosted
+      # GitHub runner cannot reach Ollama on a laptop, so in CI this must be a
+      # cloud endpoint. Set OPENAI_API_KEY as a repository SECRET and MODEL_ID /
+      # OPENAI_BASE_URL as repository VARIABLES.
+      #
+      # With no key configured the judge falls back to its deterministic offline
+      # backend, so the gate still runs, still blocks regressions, and costs $0.
+      - name: LLM eval gate (groundedness >= 0.90)
+        env:
+          MODEL_ID: ${{ vars.MODEL_ID }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python evals/judge.py evals/cases.jsonl --min-groundedness 0.90 --min-pass-rate 0.90
+
+      # ---------- Post-deploy monitoring, run as part of the record ----------
+      - name: Drift check (PSI) and error budget
+        run: |
+          python monitoring/psi.py monitoring/data/reference.txt monitoring/data/current.txt
+          python monitoring/error_budget.py --slo 0.99 --total 20000 --bad 140
