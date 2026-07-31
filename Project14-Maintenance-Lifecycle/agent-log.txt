@@ -1,0 +1,139 @@
+================================================================================
+agent-log.txt — honest record of AI delegation
+Week 14 — Maintenance and the Lifecycle of Things
+Author: Srujana Challuri
+Course policy: Phase 2 (agentic). AI is part of the work. This log records what I
+delegated, what it did, where it was WRONG, and where I intervened.
+The agent does not sign the risk acceptance. I do.
+================================================================================
+
+--------------------------------------------------------------------------------
+ENTRY 1 — 2026-07-30 — Rep 2, CVE ranking
+--------------------------------------------------------------------------------
+DELEGATED TO: AI copilot (chat)
+PROMPT: pasted the full contents of code/cve_feed.json and asked:
+        "Rank these five advisories by patch priority and recommend a patch
+        schedule for a small AI serving estate."
+
+WHAT IT DID WELL:
+  - Correctly identified CVE-2026-10122 as the top item, with sound reasoning
+    (unauthenticated RCE + KEV + internet-facing + fix available).
+  - Drafted rollback notes I actually kept and adapted into
+    reps/rep03-change-record.md.
+  - Suggested draining load-balancer connections during the proxy patch — a real
+    operational consideration I had not written down.
+
+WHERE IT WAS WRONG:
+  1. INVENTED INFRASTRUCTURE. It asserted the reverse proxy "likely fronts a load
+     balancer that will need to drain connections." Nothing in cve_feed.json
+     describes my topology — the feed has five fields per advisory and none of
+     them are architectural. Plausible guess, presented as fact.
+  2. INVENTED A SECOND FACT. It claimed the GPU driver flaw (CVE-2026-10588) was
+     "reachable from the container runtime." That is a claim about my isolation
+     posture that nobody gave it.
+  3. MISHANDLED has_fix: false. It ranked CVE-2026-10588 SECOND while
+     simultaneously advising "patch as soon as a fix ships." That is an
+     unexecutable instruction in an urgent slot. patch_triage.py deliberately adds
+     +30 for a missing fix to keep unpatchable items out of the urgent queue.
+
+WHERE I INTERVENED:
+  - Rejected the AI ranking as the ranking of record. Acted on patch_triage.py,
+    which is deterministic, reproducible, and auditable.
+  - Deleted both invented infrastructure claims; kept the connection-draining idea
+    only as a marked ASSUMPTION to verify, not as a finding.
+  - Moved CVE-2026-10588 to a mitigation track (access restriction, detection
+    rules, 14-day vendor recheck) instead of an urgent patch ticket.
+  - Wrote the risk acceptance section myself and left the signature line blank for
+    a human. (Rep 3)
+
+--------------------------------------------------------------------------------
+ENTRY 2 — 2026-07-30 — Rep 3, change record draft
+--------------------------------------------------------------------------------
+DELEGATED: asked the copilot for a change-record skeleton (fields only).
+WHAT IT DID: produced a reasonable template — who/what/why/when/rollback/verify.
+WHERE IT WAS WRONG: its template had an "Approved by:" field that it offered to
+    pre-fill with a placeholder name, and it did not include a separate risk
+    acceptance signature for deferred CVEs at all.
+WHERE I INTERVENED: added the risk acceptance block, left BOTH signature lines
+    blank, and wrote the reflection on why those two fields are the ones an AI must
+    never fill. A signature is not information about the change; it is a person
+    assuming consequences.
+
+--------------------------------------------------------------------------------
+ENTRY 3 — 2026-07-30 — Rep 5, AI drift scenarios
+--------------------------------------------------------------------------------
+DELEGATED: asked for candidate config changes that alter model behavior while
+    health metrics stay green.
+WHAT IT DID WELL: suggested quantization-library versions and serving-engine flags;
+    both survived into the final answer.
+WHERE IT WAS WRONG: it initially treated a GPU driver upgrade as behaviorally
+    neutral ("only affects performance"). That is exactly backwards — a driver
+    change swaps cuBLAS/cuDNN kernels, which changes reduction order and
+    floating-point results, which changes logits and therefore tokens.
+WHERE I INTERVENED: kept the driver scenario and made it the sharpest of the three,
+    because it collides directly with Rep 1: patching CVE-2026-10588 is correct
+    security hygiene AND a silent model change. That connection is mine, and it is
+    what produced the operational rule in the plan — any change to any line of the
+    stack manifest re-triggers the eval gate.
+
+--------------------------------------------------------------------------------
+ENTRY 4 — 2026-07-30 — Rep 10, EU AI Act current status
+--------------------------------------------------------------------------------
+DELEGATED: asked for the current status of the EU AI Act high-risk obligations and
+    the Digital Omnibus.
+WHERE IT WAS WRONG — AND THIS IS THE IMPORTANT ONE: the model's answer reflected a
+    training cutoff. It described the Digital Omnibus as a PROPOSAL and stated the
+    high-risk date as 2 August 2026. Both were true when its training data was
+    collected and are false now.
+WHERE I INTERVENED: verified against live sources on 2026-07-30. The Omnibus was
+    formally adopted — Parliament 2026-06-16, Council 2026-06-29, in force
+    2026-07-27 as Regulation (EU) 2026/1744 — deferring stand-alone Annex III
+    high-risk obligations to 2 December 2027. Cited the sources and dated the
+    answer in reps/rep10-regulation-status.md.
+LESSON, and it is the rep's own lesson turned on the tool: an AI is a snapshot of a
+    world that has moved. "The regulation is fixed" is a maintenance bug whether the
+    stale copy lives in my model card or in a language model's weights. Every date,
+    price, and retirement claim in this submission was verified live and dated.
+
+--------------------------------------------------------------------------------
+ENTRY 5 — 2026-07-30 — Rep 8, model retirement date
+--------------------------------------------------------------------------------
+DELEGATED: asked for the retirement date of claude-opus-4-1.
+WHERE IT WAS WRONG: gave a confident answer without a source, and used the
+    marketing name rather than the exact API ID.
+WHERE I INTERVENED: verified against
+    https://docs.anthropic.com/en/docs/resources/model-deprecations on 2026-07-30 —
+    claude-opus-4-1-20250805, deprecation notice 2026-06-05, retirement 2026-08-05.
+    Pinned the exact dated ID everywhere, since the Step-0 inventory grep only works
+    on the exact string. Recorded the source and verification date in the model
+    card and the AIBOM.
+
+--------------------------------------------------------------------------------
+ENTRY 6 — 2026-07-30 — reps 6, 7, 9, 11 and the plan
+--------------------------------------------------------------------------------
+DELEGATED: light drafting assistance on structure and phrasing.
+NOT DELEGATED, and deliberately so:
+  - The EU AI Act risk-tier classification (Rep 9). I walked Annex III myself and
+    wrote why point 5 misses. An agent cannot own a regulatory classification.
+  - The gate thresholds (Rep 6). Choosing that pii_leak_rate must be 0.00 rather
+    than "low" is a risk judgment about restricted donor data.
+  - The registry retirement decisions (Rep 11). Which four versions to cast away
+    and the 2026-08-15 date are mine.
+  - Every signature line in this repository. All blank, awaiting a human.
+
+--------------------------------------------------------------------------------
+SUMMARY — the honest floor
+--------------------------------------------------------------------------------
+The copilot was genuinely useful for drafting, structure, and jogging my memory on
+operational details. It was unreliable in three specific ways, and the pattern is
+consistent: it invented facts about infrastructure it could not see, it reasoned
+past a field it had correctly read (has_fix: false), and it was confidently stale on
+anything with a date attached.
+
+So the division of labor I actually used: the agent drafts, I verify anything dated
+or factual against a live source, and I own every judgment that carries
+consequences — the classification, the thresholds, the deferrals, the retirements,
+and the signatures. Six days from now claude-opus-4-1-20250805 retires. If that
+migration goes wrong, the question will be who decided, and the answer has to be a
+person.
+================================================================================

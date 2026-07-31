@@ -1,0 +1,433 @@
+================================================================================
+LIFECYCLE_PLAN.txt
+Model Lifecycle and Maintenance Plan
+Service: ministry-rag-summarizer  (RAG summarization of donor correspondence)
+Owner:   platform-ai
+Author:  Srujana Challuri
+Version: 1.0
+Date:    2026-07-30
+Course:  System Administration and Maintenance — Week 14 capstone rep
+================================================================================
+
+PURPOSE
+-------
+This is the document I would hand to a team that has to run this AI service
+without me. It states how we patch, how we change things, how a model moves
+through its stages, what governance artifacts must exist, which frameworks apply,
+and how things get retired on purpose instead of by surprise.
+
+Everything here is assembled from Reps 1-11 in this repository. Where a rep
+contains the working detail, it is cited.
+
+
+================================================================================
+1. PATCH / VULNERABILITY POLICY
+================================================================================
+
+1.1 Feed ingestion
+    - Vulnerability advisories are ingested daily from the vendor feeds and CISA
+      KEV. The estate is scanned weekly against the AIBOM (Section 4.2), so the
+      question "does this CVE affect us?" is answered from inventory, not memory.
+    - Regulatory change is treated as a second feed on a quarterly cadence
+      (Section 5.4). Same discipline, slower clock.
+
+1.2 Deterministic triage
+    - All advisories are scored with code/patch_triage.py. The scoring is
+      arithmetic, not judgment, so it is reproducible and auditable:
+
+          base 100
+          minus (CVSS x 5)
+          minus 40   if on CISA KEV (actively exploited)
+          minus 20   if internet-facing
+          plus  30   if no vendor fix exists
+
+    - Tiers and SLAs:
+
+          score <= 10   EMERGENCY   patch within 24 hours
+          score <= 40   HIGH        patch within the current week
+          score <= 70   MEDIUM      next scheduled maintenance window
+          score >  70   LOW         track; defer; re-check on schedule
+
+    - The tool ranks. It does not decide. (Rep 1)
+
+1.3 The has_fix: false rule
+    - An advisory with no vendor fix scores +30 and lands in LOW. LOW here means
+      "no patch action available," NOT "no action."
+    - Every such item gets a MITIGATION TRACK instead: access restriction,
+      detection rules, and a named recheck date, reviewed every 14 days until a
+      fix ships. An urgent ticket nobody can close is worse than a tracked one.
+      (Rep 1, Rep 2)
+
+1.4 Human override
+    - Any engineer may manually promote an item above its computed tier. The
+      scorer does not know our topology, and "not internet-facing" is only worth
+      -20 if the segmentation is real and currently tested.
+    - An override must be written into the change record with a reason and a name.
+      Overrides are expected; silent overrides are not. (Rep 1)
+
+1.5 AI assistance, bounded
+    - A copilot may draft rationale, rollback steps, and comms. Its ranking is
+      advisory only and is never the ranking of record, because it is
+      non-reproducible and it invents infrastructure facts it was not given.
+      (Rep 2, and agent-log.txt)
+
+1.6 WHO SIGNS RISK ACCEPTANCES
+    - Any decision to leave a known vulnerability unpatched is a RISK ACCEPTANCE
+      and requires a named human signature and a date.
+    - Signing authority:
+          EMERGENCY / HIGH deferral ....... Head of Platform Engineering
+          MEDIUM / LOW deferral ........... Service owner (platform-ai lead)
+          Any deferral touching restricted PII ..... plus the Data Protection lead
+    - An AI must never fill this field. A signature is not information about the
+      change; it is a person assuming consequences for it, and a model cannot
+      assume consequences. (Rep 3)
+
+
+================================================================================
+2. CHANGE AND CONFIGURATION POLICY
+================================================================================
+
+2.1 What counts as a change
+    A change is ANY modification to a line in the stack manifest (Section 4.1) --
+    not just application code. That explicitly includes:
+        base model ID, weights, prompt template, retrieval index, embedding model,
+        serving engine version or flags, quantization library, inference
+        libraries, CUDA runtime, GPU driver, GPU SKU.
+    A security patch is a change. A dependency bump is a change. A driver upgrade
+    is a change. (Rep 5)
+
+2.2 Change records
+    - Every change gets a record answering: who, what, why, when, HOW TO ROLL
+      BACK, and WHO ACCEPTED THE RISK for anything deferred.
+      Template: reps/rep03-change-record.md
+    - Emergency changes may be approved after the fact but never skipped.
+    - A change whose rollback requires a meeting is not reversible. Rollback
+      authority belongs to the implementer, with pre-agreed trigger conditions.
+
+2.3 Reversibility requirements
+    - Pre-change inventory captures the EXACT prior version string. Rollback is
+      "to this version," never "to the last version."
+    - Snapshot before, verify the snapshot restores, then proceed.
+    - Rollback triggers are written BEFORE the change starts, not judged during
+      the incident: health check fails, 5xx above 1% for 3 minutes, p95 above 2x
+      baseline.
+    - A rollback re-opens the change record as a P1. It does not close it.
+
+2.4 Drift detection -- infrastructure
+    - Ansible baselines are enforced from ansible/site.yml.
+    - A scheduled nightly dry run detects drift without remediating it:
+
+          ansible-playbook -i inventory.ini site.yml --check --diff
+
+    - changed=0 under --check means the host matches baseline. Anything above
+      zero is the size of the delta and produces a ticket, not an automatic fix.
+    - Detection is continuous and cheap; remediation is gated and deliberate.
+      Reverting drift blindly can erase an undocumented emergency mitigation --
+      sometimes reality is right and the baseline is wrong. (Rep 4)
+    - Honest limit: a dry run only detects drift in what the playbook declares.
+      changed=0 means "no drift in what I check," never "no drift."
+
+2.5 Drift detection -- AI BEHAVIOR (the part traditional monitoring misses)
+    - Health metrics cannot detect behavioral drift. A quantization library bump,
+      a serving-engine flag change, or a GPU driver upgrade can alter output or
+      throughput while uptime, CPU, memory, error rate, and latency all look
+      normal or BETTER. (Rep 5)
+    - Therefore the eval suite is monitoring. evals/summarizer_v3.jsonl runs
+      weekly against a fixed held-out set, and on every stack-manifest change.
+    - Alert thresholds mirror the promotion gate (Section 3.3). A drop below gate
+      minimums in production is an incident, not a backlog item.
+    - The LLM judge is itself re-validated against human raters quarterly
+      (human_label_agreement). A stale kappa looks like evidence and isn't.
+
+
+================================================================================
+3. THE ASSET LIFECYCLE
+================================================================================
+
+3.1 The five stages
+
+        DEV  ->  STAGING  ->  PRODUCTION  ->  DEPRECATED  ->  RETIRED
+
+    Reference: the Model Lifecycle Board from the Chapter 14 chapter page. Each
+    arrow is a GATE. Nothing advances by drift, seniority, or deadline pressure.
+
+3.2 The gate at each promotion
+
+    DEV -> STAGING
+        - Model card exists with base_model_id pinned to the exact dated ID.
+        - Stack manifest recorded in full.
+        - Datasheet reference and provenance present; PII class assigned.
+        - Eval suite runs end to end and produces numbers.
+
+    STAGING -> PRODUCTION
+        - gate_passed: true, against the published thresholds (3.3).
+        - Shadow run against live traffic completed; outputs compared, not served.
+        - Named human approver signs the model card.
+        - AIBOM regenerated and diffed against the previous version.
+        - Rollback target identified and confirmed resolvable.
+        - retire_after set to a real date. Never null.
+
+    PRODUCTION -> DEPRECATED
+        - A successor exists and has passed its own gate, OR the base model has a
+          published retirement date.
+        - deprecation_notice dated on the card.
+        - Alias moved; old version remains resolvable as @previous for rollback.
+
+    DEPRECATED -> RETIRED
+        - Zero production references confirmed by inventory grep (Rep 8, Step 0).
+        - Weights, config, model card, and eval harness archived to WORM storage.
+        - Change record closed. A retirement is a change like any other.
+
+3.3 Promotion gate thresholds (from reps/rep06-model_card.yaml)
+
+        groundedness ............... >= 0.90
+        hallucination_rate ......... <= 0.05
+        human_label_agreement ...... >= 0.85
+        pii_leak_rate .............. == 0.00
+        p95_latency_ms ............. <= 3000
+
+    If human_label_agreement falls below 0.85, NO promotion decision may be made
+    from that eval run at all -- the measuring instrument has failed, so the other
+    numbers are not evidence. (Rep 6)
+
+3.4 What must pass, restated plainly
+    Passing a gate is a measurement against a published threshold, signed by a
+    person. It is not a demo, a vibe, or a deadline.
+
+
+================================================================================
+4. GOVERNANCE ARTIFACTS
+================================================================================
+
+4.1 Model card -- reps/rep06-model_card.yaml
+    Required for anything promoted past DEV. Held in the registry beside the
+    weights, signed, and retained. Beyond the standard fields it carries a
+    SERVING_STACK MANIFEST, because a model version is not a weights hash -- it is
+    the full behavior-producing stack (Rep 5). Every number is tagged measured or
+    target. Blank approver, blank retire_after, a marketing-name base model ID, or
+    a failing gate all block promotion (Rep 6).
+
+4.2 AIBOM -- reps/rep07-aibom.cdx.json
+    CycloneDX 1.7 ML-BOM listing weights, dataset reference, and dependencies
+    including the serving engine and CUDA runtime. An SPDX 3.0 (AI + Dataset
+    profile) view of the same inventory is sketched in reps/rep07-aibom-notes.md;
+    CycloneDX is what CI emits to the scanner, SPDX is what goes to counsel.
+    GENERATED IN CI AND DIFFED ON EVERY BUILD -- a hand-maintained AIBOM is tribal
+    knowledge in JSON and will be wrong on the day it matters. When a deprecation
+    notice lands, this file turns an open-ended search into a closed lookup.
+    (Rep 7)
+
+4.3 Change records -- reps/rep03-change-record.md
+    One per change. Who, what, why, when, how to roll back, who accepted the risk.
+
+4.4 Immutable audit trail
+    Location: worm://logs/model-promotions/
+    WORM (write-once, read-many) storage, retained per EU AI Act Art. 12.
+    Contents: every promotion, demotion, gate result, eval run, model card
+    version, change record, risk acceptance signature, and retirement.
+    The point of WORM is that the record cannot be edited after an incident --
+    including by the people who would most like to edit it.
+
+4.5 Datasheet -- datasheets/donor-corpus-v4.md
+    Provenance, consent basis, PII class, retention, TDM opt-out status.
+
+
+================================================================================
+5. FRAMEWORK MAP
+================================================================================
+
+5.1 NIST AI RMF 1.0 ......... primary function: MANAGE
+    Govern  = owner, approver, audit log, human oversight
+    Map     = task, provenance, PII class, stack manifest, risk tier
+    Measure = eval block, gate thresholds, human_label_agreement
+    Manage  = lifecycle stages, deprecation, rollback, retirement
+    (Rep 9)
+
+5.2 EU AI Act ............... tier: LIMITED RISK (transparency obligations)
+    Basis: no Annex III use case. Summaries are read by staff; no output
+    determines any person's access to services; the model never sends outbound
+    correspondence. Nearest miss is Annex III point 5, and it misses because a
+    human decides.
+    RECLASSIFICATION TRIGGER: if this system is ever extended to score, rank, or
+    prioritize donors for eligibility or benefit decisions, the Annex III analysis
+    changes and the tier is re-opened. A change in use is a governance event.
+    Also true: limited-risk removes AI Act high-risk duties, not GDPR duties.
+
+    CURRENT-STATUS NOTE (as of 2026-07-30):
+        Original statutory date for high-risk obligations ...... 2026-08-02
+        Digital Omnibus deferral, stand-alone Annex III ........ 2027-12-02
+        Formally adopted? ...... YES -- Regulation (EU) 2026/1744,
+                                 in force 2026-07-27 (Parliament 2026-06-16,
+                                 Council 2026-06-29).
+        The deferral covers stand-alone Annex III systems only. Prohibitions,
+        AI-literacy duties, GPAI obligations and Art. 50 transparency rules run on
+        their own timetable and are already applying.
+        Sources cited and dated in reps/rep10-regulation-status.md. Re-verify
+        against the consolidated text on EUR-Lex before acting. (Rep 10)
+
+5.3 ISO/IEC 42001 ........... control: A.6.2.4 -- AI system lifecycle
+    Evidenced by the five stages and gates in Section 3, the dated promotion
+    records, the gate thresholds, and the retirement procedure in Section 6.
+    (Rep 9)
+
+5.4 Why all three
+    These are layers, not competitors. NIST gives the risk vocabulary and the
+    reasoning process. The EU AI Act gives legally binding obligations with dates
+    and penalties. ISO 42001 gives an auditable, certifiable management system
+    that produces compliance repeatably. The Act sets the floor; 42001 is the
+    machinery that clears it provably; NIST is the thinking done inside it.
+
+5.5 Regulatory maintenance task (recurring, owned, dated)
+    QUARTERLY REGULATORY REVIEW -- owner: service owner, with counsel.
+        - Re-read the current consolidated AI Act text on EUR-Lex and AI Office
+          guidance.
+        - Re-confirm applicable dates for every tier in the estate.
+        - Re-validate each registered system's tier against the current Annex III,
+          asking specifically whether its USE has drifted.
+        - Check for new delegated acts, standards, and codes of practice.
+        - Update eu_ai_act_tier and eu_ai_act_basis on every model card with a
+          fresh date stamp.
+        - Produce a dated written finding EVEN IF the finding is "no change."
+    Between reviews: EUR-Lex and AI Office alerts routed to a ticket queue, not an
+    inbox. An email nobody owns is not a control.
+    Rationale: "the regulation is fixed" is the same maintenance bug as "the
+    server is patched" -- a statement about a moment treated as a statement about a
+    state. Regulation is a feed, like a CVE feed, with a slower clock. (Rep 10)
+
+
+================================================================================
+6. DEPRECATION AND RETIREMENT PLAN
+================================================================================
+
+6.1 Trigger
+    A deprecation notice for any base model we depend on. Treated exactly like an
+    OS or package EOL: a dated, owned, tested migration -- not a fire drill on
+    retirement day.
+
+    LIVE INSTANCE AS OF 2026-07-30:
+        claude-opus-4-1-20250805 -- deprecation notice 2026-06-05,
+        RETIRES 2026-08-05 (six days out).
+        Verified 2026-07-30 against
+        https://docs.anthropic.com/en/docs/resources/model-deprecations
+        Successor candidate: claude-sonnet-5 (vendor recommends Opus 4.8; the
+        eval gate decides, not the vendor and not me).
+
+6.2 The migration runbook
+    Full procedure: reps/rep08-migration-runbook.md
+        Step 0  Inventory -- grep the whole estate for the pinned model ID
+        Step 0b DERIVATIVES FIRST (see 6.3)
+        Step 1  Decide the successor -- human judgment; re-eval old AND new
+        Step 2  Stage and gate -- shadow, do not serve
+        Step 3  Cut over -- canary 5/25/100, old alias resolvable for rollback
+        Step 4  Retire -- zero references confirmed, archive to WORM, close record
+
+    Step-0 inventory command:
+
+        grep -rn "claude-opus-4-1\|claude-sonnet-4-0" . \
+          --include="*.py" --include="*.yaml" --include="*.tf" --include="*.json"
+
+    Run against this estate, the scoped grep found 5 references in 2 files and
+    ZERO references to claude-sonnet-4-0. Widening it (dropping --include) found 9
+    files. The gap is the finding: the registry is Markdown, so the filters skipped
+    it, AND the registry did not record base model IDs at all -- so a fine-tuned
+    derivative in production was unfindable by any string search. Both were fixed
+    (Rep 8, Rep 11).
+    RULE: an inventory scoped to four file types is not an inventory, and a grep is
+    a VERIFICATION step, not a discovery step. The registry and the AIBOM are the
+    authoritative inventory; the grep exists to catch drift between what they claim
+    and what the estate contains. When they disagree, the disagreement is the
+    finding.
+
+6.3 THE DERIVATIVE-FIRST RULE
+    Fine-tuned derivatives are hunted BEFORE plain references, always.
+    A plain reference is a string edit: miss it and you get an outage, fix it in
+    minutes. A derivative is MADE OUT OF the base: miss it and the capability is
+    permanently lost, because you cannot re-tune on a retired base.
+    The trap is that it is silent -- a derivative keeps serving normally after
+    deprecation while the ability to REBUILD it has already expired. Nothing
+    alerts during the only window in which action is possible.
+    Therefore:
+        - Every derivative row in the registry permanently carries its base model
+          ID and that base's retirement date.
+        - Those dates are monitored like certificate expiries, alerting months out.
+        - On any deprecation notice: archive training set, hyperparameters, and
+          eval harness to WORM BEFORE the retirement date, and budget a re-tune.
+    Current instance: donor-tone-classifier 1.4.0, fine-tuned on
+    claude-sonnet-4-0, in production. Top-priority item. (Rep 8)
+
+6.4 retire_after -- never blank
+    Every registry entry carries a non-null retire_after from the moment it is
+    created, including the champion (tied to its base model's retirement date).
+
+    Registry policy: KEEP THE CHAMPION, KEEP EXACTLY ONE ROLLBACK-RESERVE,
+    ARCHIVE EVERYTHING ELSE WITHIN 90 DAYS OF BEING SUPERSEDED.
+    Two is the right rollback depth: if @previous cannot save you, the problem is
+    not the model version.
+
+    Current registry disposition (Rep 11) -- 9 versions:
+        live ................ 3   ministry-rag-summarizer 3.0.0,
+                                  donor-tone-classifier 1.4.0,
+                                  grant-letter-drafter 0.9.0 (staging)
+        rollback-reserve .... 2   summarizer 2.3.0, classifier 1.3.0
+        cast away ........... 4   summarizer 2.2.1 / 2.0.0 / 1.4.0,
+                                  classifier 0.9.0
+        retire_after for all four cast-away entries: 2026-08-15
+
+    Archive is not delete. Weights, config, model card, and eval results go to
+    WORM for the audit trail; what is removed is the catalog entry -- the thing
+    that creates confusion about what is live.
+
+6.5 The cost of keeping past the season
+    Disk (trivial, and the wrong reason to act). Catalog clutter -- an inventory
+    with no retire_after dates is a pile, and "what is running?" reverts to
+    archaeology. Audit surface -- every retained version is a question you have
+    volunteered to answer, often with a model card written before your current
+    standard. Confusion about what is live -- someone under pressure rolls back to
+    a version that predates the current retrieval index and cannot retrieve
+    anything. And the illusion of optionality: versions kept "just in case" mostly
+    stop being runnable when the base retires, so you were never holding options,
+    only paying for them. (Rep 11)
+
+
+================================================================================
+7. THEOLOGICAL FOOTNOTE
+================================================================================
+
+"For everything there is a season, and a time for every matter under heaven."
+                                                    -- Ecclesiastes 3:1 (ESV)
+"a time to keep, and a time to cast away"           -- Ecclesiastes 3:6 (ESV)
+
+I want to be careful not to make this decorative, so let me tie it to one line in
+this plan: Section 6.4, where ministry-rag-summarizer 2.2.1, 2.0.0, 1.4.0, and
+donor-tone-classifier 0.9.0 get retire_after: 2026-08-15.
+
+I did not delete those four versions because they were broken. I deleted them
+because their season ended, and I noticed. Every one of them was good work that did
+its job. 1.4.0 served real donor correspondence for months. Keeping them felt like
+prudence, but it was mostly reluctance wearing prudence's clothes -- I could not
+name a scenario in which I would use them, and I kept them anyway, because
+deleting something that once worked feels like a verdict on the work.
+
+Ecclesiastes will not let me leave it there. It puts keeping and casting away in
+the same breath, as equals, both seasonal, both requiring a decision. There is no
+suggestion that holding on is the safe default and letting go is the risk. Refusing
+to decide is not caution; it is choosing to keep forever without ever defending the
+choice. And the honest thing about a registry is that the season ends whether or not
+I act. On 2026-08-05, three of my nine versions stop existing because a supplier's
+calendar says so. Retirement is coming to this system either way.
+
+So the only real choice is whether it is a decision or an accident -- which is the
+same distinction Rep 3 drew about the signature line. Casting away on purpose, with
+a date, an archive to WORM, and a name on it, is stewardship: I looked, I judged, I
+own it. Being forced to cast away at 2 a.m. because the deprecation clock ran out is
+the identical outcome with the agency removed, arrived at on someone else's schedule
+at the worst possible hour.
+
+Setting 2026-08-15 on four versions this week is small. But it is me choosing the
+season rather than letting the season choose me, and I think that is most of what
+maintenance actually is -- doing the boring, dated, signed thing early, so the
+system never has to be rescued.
+
+================================================================================
+END OF PLAN
+================================================================================

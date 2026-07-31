@@ -1,0 +1,51 @@
+---
+# site.yml — five tasks. Ensures a package is installed and a config file has
+# exact contents. Run with --check --diff to DETECT drift without fixing it.
+#
+#   ansible-playbook -i inventory.ini site.yml --check --diff
+#
+- name: Baseline for the inference host
+  hosts: local
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    app_dir: /tmp/rep4-demo
+    config_path: "{{ app_dir }}/inference.conf"
+
+  tasks:
+    - name: 1. Ensure the application directory exists
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: 2. Ensure the curl package is installed
+      ansible.builtin.package:
+        name: curl
+        state: present
+      check_mode: true
+      ignore_errors: true
+      register: pkg_state
+
+    - name: 3. Ensure the inference config has exactly these contents
+      ansible.builtin.copy:
+        dest: "{{ config_path }}"
+        mode: "0644"
+        content: |
+          # managed by ansible - do not edit by hand
+          max_tokens=1024
+          temperature=0.2
+          model_alias=@champion
+          log_level=info
+
+    - name: 4. Ensure the config file is not world-writable
+      ansible.builtin.file:
+        path: "{{ config_path }}"
+        mode: "0644"
+
+    - name: 5. Ensure the drift marker file is absent
+      ansible.builtin.file:
+        path: "{{ app_dir }}/UNMANAGED_OVERRIDE"
+        state: absent

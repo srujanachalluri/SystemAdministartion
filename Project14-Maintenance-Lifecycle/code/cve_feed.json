@@ -1,0 +1,12 @@
+[
+  { "id": "CVE-2026-10122", "cvss": 9.8, "kev": true,  "internet_facing": true,  "has_fix": true,
+    "summary": "Unauthenticated RCE in the reverse proxy fronting the inference API." },
+  { "id": "CVE-2026-10477", "cvss": 7.5, "kev": false, "internet_facing": true,  "has_fix": true,
+    "summary": "DoS in the vector-DB query parser; crashes the pgvector backend." },
+  { "id": "CVE-2026-10588", "cvss": 8.1, "kev": false, "internet_facing": false, "has_fix": false,
+    "summary": "Privilege escalation in the GPU driver; no vendor fix yet, mitigation only." },
+  { "id": "CVE-2026-10610", "cvss": 4.3, "kev": false, "internet_facing": false, "has_fix": true,
+    "summary": "Info leak in an internal logging library; low impact, behind the firewall." },
+  { "id": "CVE-2026-10733", "cvss": 9.1, "kev": true,  "internet_facing": false, "has_fix": true,
+    "summary": "Auth bypass in the model registry; exploited but not internet-exposed." }
+]

@@ -1,0 +1,36 @@
+# Migration Runbook — base model deprecation
+
+**Trigger:** a deprecation notice landed for a base model we depend on.
+Treat this exactly like an OS or package EOL: a dated, owned, tested migration —
+not a fire drill on retirement day.
+
+> Teaching example (verify the live schedule before acting; dates move):
+> as of mid-2026, Anthropic published retirements such as Claude Opus 4.1
+> retiring 2026-08-05 and Opus/Sonnet 4.0 retiring 2026-06-15. Pin the exact
+> model ID, read the official deprecation notice, and confirm the date yourself.
+
+## 0. Inventory (you cannot migrate what you cannot find)
+- [ ] Grep the whole estate for the pinned model ID (code, config, IaC, agent-log).
+- [ ] List every fine-tuned derivative — these may be **inference-only until the
+      base is gone**, then irrecoverable. Flag them first.
+- [ ] Update the AIBOM so the dependency is documented, not tribal knowledge.
+
+## 1. Decide the successor (human judgment — an agent cannot own this)
+- [ ] Pick the replacement model ID from the current catalog. Pin it.
+- [ ] Re-run the eval suite on BOTH old and new against the same held-out set.
+- [ ] Record groundedness, hallucination rate, latency, and $/1M-token delta.
+
+## 2. Stage and gate (no promotion without a passed gate)
+- [ ] Deploy the successor to staging behind the same prompts.
+- [ ] Shadow it against live traffic; compare outputs, do not serve them yet.
+- [ ] Update the model card: new base ID, new eval numbers, new approver sign-off.
+
+## 3. Cut over (reversible, observable)
+- [ ] Canary 5% -> 25% -> 100%, watching the drift dashboard at each step.
+- [ ] Keep the old alias resolvable for fast rollback until the base is retired.
+- [ ] Move the old version to `@deprecated`; set a `retire_after` date — never blank.
+
+## 4. Retire (the discipline most teams skip)
+- [ ] On the base retirement date, confirm zero production references remain.
+- [ ] Archive weights/config to WORM storage; keep the audit trail (EU AI Act Art. 12).
+- [ ] Close the loop in the change record. A retirement is a change like any other.

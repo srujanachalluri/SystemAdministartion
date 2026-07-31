@@ -1,0 +1,87 @@
+# rep06-model_card.yaml — governance-grade model card
+# Structure re-created by hand from code/model_card.yaml (Chapter 14 starter).
+# Service: ministry-rag-summarizer — RAG summarization of donor correspondence.
+# Author: Srujana Challuri   Date: 2026-07-30
+#
+# MEASURED vs TARGET: every number below is tagged. Numbers marked (target) are
+# goals we have not yet measured. Nothing on a card should be ambiguous about
+# whether it was observed or hoped for.
+
+model:
+  name: ministry-rag-summarizer
+  version: "3.0.0"                        # major bump: base model changes in the 4.1 migration
+  registry_alias: "@champion"             # alias, not a fixed "Production" stage
+  base_model_id: "claude-opus-4-1-20250805"   # EXACT dated ID, not "Claude Opus 4.1"
+  base_model_retires: "2026-08-05"        # verified 2026-07-30 against
+                                          # https://docs.anthropic.com/en/docs/resources/model-deprecations
+                                          # deprecation notice issued 2026-06-05
+  task: "retrieval-augmented summarization of donor correspondence"
+  license: "internal-only"
+
+# The stack manifest is the real model version (see rep05-ai-drift.md).
+# Any change to ANY line below is a model change and re-triggers the eval gate.
+serving_stack:
+  serving_engine: "vLLM 0.9.2"
+  engine_flags: "--max-num-seqs 64 --gpu-memory-utilization 0.90 --enable-prefix-caching"
+  quantization: "none (hosted API base model)"
+  embedding_model: "text-embedding-3-large"
+  retrieval_index: "pgvector 0.7.4 / donor-corpus index v4 (rebuilt 2026-06-02)"
+  prompt_template_hash: "sha256:2f9c1ab4…"   # prompt is code; it is versioned
+  cuda_runtime: "12.4"
+  gpu_driver: "550.90.07"
+  gpu_sku: "NVIDIA L40S"
+
+owner:
+  team: "platform-ai"
+  approver: "Srujana Challuri (human sign-off required before promotion)"
+  contact: "ai-governance@example.org"
+  on_call_rotation: "platform-ai-oncall"
+
+training_data:
+  datasheet_ref: "datasheets/donor-corpus-v4.md"    # Gebru et al. datasheet
+  pii_class: "restricted"                            # drives retention + access control
+  provenance: "internal CRM export, 2024-01 to 2026-03, consented records only"
+  consent_basis: "donor communications consent clause, CRM field consent_ai_processing = true"
+  tdm_optout_respected: true                         # EU Copyright Directive TDM opt-out
+  retention: "36 months, then purge; index rebuilt from source on purge"
+  fine_tuned_derivatives: "none — retrieval only, no fine-tuning on the base"
+
+evaluation:
+  eval_suite: "evals/summarizer_v3.jsonl (412 held-out donor letters)"
+  eval_run_date: "2026-07-28"
+  groundedness: 0.93              # (measured) RAGAS faithfulness on held-out set
+  hallucination_rate: 0.04        # (measured) manual adjudication, 120-item sample
+  human_label_agreement: 0.89     # (measured) LLM judge vs 2 human raters, Cohen's kappa
+  pii_leak_rate: 0.00             # (measured) 0/412 — donor names outside source doc
+  p95_latency_ms: 2180            # (measured)
+  cost_per_1m_tokens_usd: 15.00   # (target) — pending finance confirmation
+  refusal_rate: 0.01              # (measured)
+  gate_passed: true               # PROMOTION IS BLOCKED IF false
+
+gate_thresholds:                  # what "passed" actually means — no vibes
+  groundedness_min: 0.90
+  hallucination_rate_max: 0.05
+  human_label_agreement_min: 0.85
+  pii_leak_rate_max: 0.00
+  p95_latency_ms_max: 3000
+
+governance:
+  nist_rmf_function: "Manage"                  # Govern / Map / Measure / Manage
+  eu_ai_act_tier: "limited-risk"               # classified honestly — see rep09
+  eu_ai_act_basis: "no Annex III use case; summarizes correspondence for staff review,
+                    no decision about a person's access to services is automated"
+  iso_42001_control: "A.6.2.4 system lifecycle"
+  aibom_ref: "reps/rep07-aibom.cdx.json"       # CycloneDX 1.7 ML-BOM
+  audit_log: "worm://logs/model-promotions/"   # immutable, EU AI Act Art. 12
+  human_oversight: "every summary is reviewed by a staff member before it reaches a donor;
+                    the model never sends outbound correspondence"
+  incident_contact: "ai-governance@example.org"
+
+lifecycle:
+  stage: "production"             # dev -> staging -> production -> deprecated -> retired
+  promoted_on: "2026-07-29"
+  promoted_by: "Srujana Challuri"
+  deprecation_notice: "2026-06-05"   # base model deprecation received; successor selection open
+  retire_after: "2026-08-05"         # NEVER blank — tied to base model retirement
+  successor_candidate: "claude-sonnet-5"   # under eval; see rep08 migration runbook
+  rollback_target: "ministry-rag-summarizer 2.3.0 (@previous) — resolvable until 2026-08-05"

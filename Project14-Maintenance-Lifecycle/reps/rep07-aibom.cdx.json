@@ -1,0 +1,122 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "serialNumber": "urn:uuid:8c1f2b40-5d3a-4e91-9a77-1b6e0c4d2f10",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-07-30T00:00:00Z",
+    "authors": [
+      { "name": "Srujana Challuri", "email": "ai-governance@example.org" }
+    ],
+    "component": {
+      "type": "application",
+      "bom-ref": "svc/ministry-rag-summarizer@3.0.0",
+      "name": "ministry-rag-summarizer",
+      "version": "3.0.0",
+      "description": "Retrieval-augmented summarization of donor correspondence."
+    }
+  },
+  "components": [
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "model/claude-opus-4-1-20250805",
+      "name": "claude-opus-4-1-20250805",
+      "version": "4.1",
+      "description": "Base model. Exact dated API ID, not the marketing name. Hosted (weights not distributed).",
+      "supplier": { "name": "Anthropic" },
+      "modelCard": {
+        "modelParameters": {
+          "task": "text-generation",
+          "modelArchitecture": "transformer (proprietary)",
+          "datasets": [
+            {
+              "type": "dataset",
+              "bom-ref": "dataset/donor-corpus-v4",
+              "name": "donor-corpus-v4"
+            }
+          ]
+        },
+        "quantitativeAnalysis": {
+          "performanceMetrics": [
+            { "type": "groundedness", "value": "0.93", "confidenceInterval": { "lowerBound": "0.91", "upperBound": "0.95" } },
+            { "type": "hallucination-rate", "value": "0.04" },
+            { "type": "human-label-agreement", "value": "0.89" }
+          ]
+        },
+        "considerations": {
+          "ethicalConsiderations": [
+            { "name": "PII exposure", "mitigationStrategy": "restricted PII class; 0.00 measured leak rate; human review before any donor-facing use" }
+          ]
+        }
+      },
+      "properties": [
+        { "name": "lifecycle:deprecation_notice", "value": "2026-06-05" },
+        { "name": "lifecycle:retires_on", "value": "2026-08-05" },
+        { "name": "lifecycle:source", "value": "https://docs.anthropic.com/en/docs/resources/model-deprecations (verified 2026-07-30)" },
+        { "name": "lifecycle:successor_candidate", "value": "claude-sonnet-5" }
+      ]
+    },
+    {
+      "type": "data",
+      "bom-ref": "dataset/donor-corpus-v4",
+      "name": "donor-corpus-v4",
+      "version": "4",
+      "description": "Internal CRM export of donor correspondence, 2024-01 to 2026-03, consented records only. Used for the retrieval index, not for training.",
+      "properties": [
+        { "name": "data:pii_class", "value": "restricted" },
+        { "name": "data:datasheet_ref", "value": "datasheets/donor-corpus-v4.md" },
+        { "name": "data:tdm_optout_respected", "value": "true" },
+        { "name": "data:retention", "value": "36 months" }
+      ]
+    },
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "model/text-embedding-3-large",
+      "name": "text-embedding-3-large",
+      "version": "1",
+      "description": "Embedding model for the retrieval index. Changing it invalidates the index and is a model change.",
+      "supplier": { "name": "OpenAI" }
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib/vllm@0.9.2",
+      "name": "vllm",
+      "version": "0.9.2",
+      "purl": "pkg:pypi/vllm@0.9.2",
+      "licenses": [ { "license": { "id": "Apache-2.0" } } ],
+      "description": "Serving engine. Flags are part of the behavior surface: --max-num-seqs 64 --gpu-memory-utilization 0.90 --enable-prefix-caching"
+    },
+    {
+      "type": "library",
+      "bom-ref": "lib/pgvector@0.7.4",
+      "name": "pgvector",
+      "version": "0.7.4",
+      "purl": "pkg:generic/pgvector@0.7.4",
+      "licenses": [ { "license": { "id": "PostgreSQL" } } ],
+      "description": "Vector store backing retrieval. Subject of CVE-2026-10477 (DoS in the query parser)."
+    },
+    {
+      "type": "framework",
+      "bom-ref": "lib/cuda@12.4",
+      "name": "cuda-runtime",
+      "version": "12.4",
+      "description": "CUDA runtime. Included because a driver/runtime change alters numerics and therefore output (see rep05). Paired GPU driver: 550.90.07, NVIDIA L40S."
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "svc/ministry-rag-summarizer@3.0.0",
+      "dependsOn": [
+        "model/claude-opus-4-1-20250805",
+        "model/text-embedding-3-large",
+        "lib/vllm@0.9.2",
+        "lib/pgvector@0.7.4",
+        "lib/cuda@12.4"
+      ]
+    },
+    {
+      "ref": "model/claude-opus-4-1-20250805",
+      "dependsOn": [ "dataset/donor-corpus-v4" ]
+    }
+  ]
+}

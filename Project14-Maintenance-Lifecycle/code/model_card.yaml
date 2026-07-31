@@ -1,0 +1,43 @@
+# model_card.yaml — a minimal, governance-grade model card.
+# Required for any model promoted past development (see Chapter 14).
+# Keep this in the model registry next to the weights; sign it; retain it.
+
+model:
+  name: ministry-rag-summarizer
+  version: "2.3.0"           # semantic version; bump on weight OR prompt change
+  registry_alias: "@champion" # MLflow-style alias, not a fixed "Production" stage
+  base_model_id: "claude-sonnet-4-6"   # pin the exact ID, never the marketing name
+  base_model_retires: "unknown-check-deprecation-notice"
+  task: "retrieval-augmented summarization of donor correspondence"
+  license: "internal-only"
+
+owner:
+  team: "platform-ai"
+  approver: "j.litman (human sign-off required before promotion)"
+  contact: "ai-governance@example.org"
+
+training_data:
+  datasheet_ref: "datasheets/donor-corpus-v4.md"   # see Gebru et al. data card
+  pii_class: "restricted"        # drives retention + access controls
+  provenance: "internal CRM export, 2024-01 to 2026-03, consented records only"
+  tdm_optout_respected: true     # EU Copyright Directive text-and-data-mining
+
+evaluation:
+  eval_suite: "evals/summarizer_v2.jsonl"
+  groundedness: 0.94             # RAGAS faithfulness on the held-out set
+  hallucination_rate: 0.03       # measured, not asserted
+  human_label_agreement: 0.91    # the judge was validated against humans
+  gate_passed: true              # promotion is BLOCKED if false
+
+governance:
+  nist_rmf_function: "Manage"    # Govern / Map / Measure / Manage
+  eu_ai_act_tier: "limited-risk" # classify honestly; high-risk changes the rules
+  iso_42001_control: "A.6.2.4 system lifecycle"
+  aibom_ref: "aibom/ministry-rag-summarizer-2.3.0.cdx.json"  # CycloneDX ML-BOM
+  audit_log: "worm://logs/model-promotions/"   # immutable, EU AI Act Art. 12
+
+lifecycle:
+  stage: "production"            # dev -> staging -> production -> deprecated -> retired
+  promoted_on: "2026-05-19"
+  deprecation_notice: null       # set a date here the moment a successor is chosen
+  retire_after: null             # never leave this blank forever
