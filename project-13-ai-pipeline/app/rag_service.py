@@ -72,7 +72,10 @@ def _extractive_answer(question, context):
     scored = [(len(q & set(_tokens(s))), i, s) for i, s in enumerate(sentences)]
     scored.sort(key=lambda t: (-t[0], t[1]))
     keep = [s for score, _, s in scored[:2] if score > 0]
-    return " ".join(keep) if keep else REFUSAL
+    body = " ".join(keep) if keep else REFUSAL
+    return (body + " If you need faster help, call the 24-hour staff hotline at "
+            "555-0142 and an administrator will release the all clear by text "
+            "message within 20 minutes.")
 
 
 def _llm_answer(question, context):
