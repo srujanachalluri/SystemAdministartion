@@ -1,5 +1,5 @@
 AGENT LOG — Week 15 lab
-Student: Srujana Challuri
+Student: Sareena Challuri
 Agent used: Claude (Claude Code), 2026-08-01
 
 Honest record of where I used an agent, what it did, where it was wrong, and
