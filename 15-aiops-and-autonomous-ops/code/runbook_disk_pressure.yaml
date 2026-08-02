@@ -1,0 +1,43 @@
+# runbook_disk_pressure.yaml
+# A machine-readable runbook for ONE failure mode. The self-healing loop reads
+# this the way an agentic SRE (Datadog Bits AI SRE, PagerDuty SRE Agent) reads a
+# runbook: detect -> diagnose -> remediate -> verify. Note every remediation
+# carries an explicit autonomy tier and a blast_radius. The gate keys off these.
+
+incident: disk-pressure-/var
+owner: platform-oncall
+version: 3
+
+detect:
+  signal: node_filesystem_avail_bytes
+  mountpoint: /var
+  threshold_pct: 10          # fire when free space drops below 10%
+  for: 5m                    # sustained, not a momentary blip
+
+diagnose:
+  # Read-only. Safe to run fully autonomously — no state change.
+  - id: top-consumers
+    cmd: "du -x -d1 /var 2>/dev/null | sort -rh | head -n 5"
+    autonomy: act            # tier 4: agent may run unattended (read-only)
+
+remediate:
+  - id: rotate-logs
+    cmd: "journalctl --vacuum-size=500M"
+    autonomy: approve        # tier 3: agent proposes, human clicks approve
+    blast_radius: low
+    reversible: false        # deleted logs are gone
+  - id: clear-apt-cache
+    cmd: "apt-get clean"
+    autonomy: act            # tier 4: low risk, reversible-in-effect
+    blast_radius: low
+  - id: scale-volume
+    cmd: "resize-pvc data-var --to 200Gi"
+    autonomy: approve        # tier 3: costs money, hard to undo
+    blast_radius: medium
+    reversible: false
+
+verify:
+  signal: node_filesystem_avail_bytes
+  mountpoint: /var
+  expect_pct_above: 25       # remediation only "worked" if we clear 25% free
+  rollback_if_unmet: page-human

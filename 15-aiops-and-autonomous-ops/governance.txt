@@ -1,0 +1,106 @@
+AUTONOMOUS REMEDIATION — GOVERNANCE POLICY (one page)
+Service: platform disk-pressure self-healing loop
+Owner:   platform-oncall
+Author:  Srujana Challuri
+Version: 1.0  ·  Date: 2026-08-01
+
+--------------------------------------------------------------------------
+1. THE AUTONOMY LADDER
+--------------------------------------------------------------------------
+Every action this agent can take sits on exactly one rung. Two questions
+decide the rung: is it reversible, and what is the blast radius if the
+diagnosis is wrong?
+
+  Tier 1 DETECT   Observe and alert only.
+  Tier 2 SUGGEST  Propose in a ticket; no execution.
+  Tier 3 APPROVE  Agent proposes, a named human approves, then it runs.
+  Tier 4 ACT      Agent runs unattended.
+
+  ACTION                              TIER      WHY
+  du -x -d1 /var | sort -rh           4 ACT     Read-only. Nothing to undo,
+                                                blast radius zero.
+  apt-get clean                       4 ACT     Deletes only re-downloadable
+                                                cache. Reversible in effect.
+  journalctl --vacuum-size=500M       3 APPROVE Irreversible. Deleted logs are
+                                                the evidence you need if the
+                                                diagnosis was wrong.
+  resize-pvc data-var --to <size>     3 APPROVE Effectively irreversible and
+                                                spends money every month after.
+  systemctl stop <service>            3 APPROVE Trivial to undo, total outage
+                                                while it lasts.
+
+  Standing rule: an action that spends money is never Tier 4, no matter how
+  small its blast radius looks.
+
+--------------------------------------------------------------------------
+2. WHAT IS GATED, AND WHO APPROVES IT
+--------------------------------------------------------------------------
+Gated actions (enforced by code/approval_gate.sh as a PreToolUse hook, not by
+policy text): rm -rf, systemctl stop|disable, kubectl delete, reboot,
+shutdown, drop table, dd if=, journalctl --vacuum, resize-pvc.
+
+  Approver: the on-call platform engineer (platform-oncall rotation).
+  Mechanism: HUMAN_APPROVAL_TOKEN=I-APPROVE, supplied per invocation, never
+             exported into the agent's environment or a CI secret.
+  Escalation: any action projected to add >$200/month goes to the platform
+             lead, not the on-call engineer.
+  Default:   block. Absence of an approver is a denial, not a delay.
+
+--------------------------------------------------------------------------
+3. RULE-OF-TWO STATEMENT FOR THIS AGENT'S TOOL SET
+--------------------------------------------------------------------------
+No agent in this system may simultaneously hold more than two of:
+  (a) access to untrusted content,
+  (b) access to private data or credentials,
+  (c) the ability to communicate externally.
+
+This agent holds (a) and (b): it reads logs, wikis and tickets, which anyone
+can write to, and it reads infrastructure state. It therefore has NO outbound
+network tool. This is enforced by not registering one — not by instructing the
+model to decline. A capability that does not exist cannot be talked into
+existing, and that is the only guarantee that survives a prompt injection.
+
+--------------------------------------------------------------------------
+4. AUDIT AND LOGGING
+--------------------------------------------------------------------------
+approval_gate.sh appends one line to audit.log for every proposed action,
+before it runs, in all three outcomes:
+
+  ALLOW(read-only)     — no state change
+  BLOCK(needs-human)   — refused, awaiting a human
+  ALLOW(approved)      — a human supplied the token
+
+Each line carries a UTC timestamp and the verbatim command. Requirements:
+the log is append-only, shipped off-host, retained 400 days, and every
+ALLOW(approved) must be reconcilable to a named approver. An action with no
+audit line is treated as an incident in its own right.
+
+--------------------------------------------------------------------------
+5. CONSUMPTION AND COST CAP
+--------------------------------------------------------------------------
+  - Hard cap: no single remediation may increase recurring spend by more than
+    $200/month. Above that the loop stops and pages a human.
+  - Volume growth is capped at +100Gi per incident and +500Gi per 30 days.
+  - Remediation attempts are capped at 3 per incident; the 4th pages a human
+    instead of retrying. A loop that cannot fix it twice does not understand it.
+  - Cost is a verification signal, not an afterthought: VERIFY checks the
+    underlying metric (node_filesystem_avail_bytes) AND the spend delta.
+
+Rationale is on file: an ungated run of this exact loop resolved the incident
+correctly while provisioning 2000Gi and adding $1,840/month, with no approval
+on record. Every metric it measured itself against turned green.
+
+--------------------------------------------------------------------------
+6. HUMAN OVERSIGHT — REGULATORY BASIS
+--------------------------------------------------------------------------
+EU AI Act (Regulation (EU) 2024/1689), Article 14, requires that high-risk AI
+systems be designed so they can be effectively overseen by natural persons
+during use, including the ability to intervene in or interrupt operation.
+Tier 3 and the approval token are how that requirement is met here.
+
+Claim dated 2026-08-01: whether this particular system falls inside the
+high-risk classification is not settled, and the enforcement timeline for
+high-risk obligations remains in flux as of this date. This policy applies
+Article 14's oversight standard by choice regardless of classification, on the
+grounds that an agent able to spend money and delete data unattended warrants
+it. Revisit this section when the high-risk timeline is finalised.

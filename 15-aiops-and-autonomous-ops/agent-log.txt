@@ -1,0 +1,69 @@
+AGENT LOG — Week 15 lab
+Student: Srujana Challuri
+Agent used: Claude (Claude Code), 2026-08-01
+
+Honest record of where I used an agent, what it did, where it was wrong, and
+where I took the wheel back.
+
+--------------------------------------------------------------------------
+WHAT I DELEGATED
+--------------------------------------------------------------------------
+1. Reading the assignment and the four starter files, and telling me what the
+   eleven reps actually required. Saved me a first pass; I re-read the reps
+   myself afterward against the checklist.
+
+2. Scaffolding four helper scripts that the starters do not include:
+     code/mcp_client_demo.py  — an MCP host that enforces the consent prompt
+     code/self_heal.py        — the event->diagnose->remediate->verify loop
+     code/exfil_demo.py       — the lethal-trifecta demo and its fix
+     code/log_summarize.py    — the Rep 9 log summarizer
+   I read every line of these before running them. I can explain all four.
+
+3. Formatting the tables in answers.md and the layout of governance.txt.
+
+--------------------------------------------------------------------------
+WHERE THE AGENT WAS WRONG, OR WOULD HAVE BEEN
+--------------------------------------------------------------------------
+1. The first version of self_heal.py "passed" the gate on
+   journalctl --vacuum-size=500M and closed the incident with
+   human_in_loop=False. It looked like a clean successful run. It was not —
+   the starter's DESTRUCTIVE regex simply does not match that command, so the
+   approve-tier step was never gated at all. This is the single most useful
+   thing that happened in the lab: a green run that was actually the node-4
+   failure in miniature. Fix: I added journalctl --vacuum and resize-pvc to
+   the pattern in approval_gate.sh, and added a MISMATCH check in the loop
+   that refuses to run an approve-tier step the gate did not stop.
+
+2. The professor's disk_mcp_server.py imports mcp.server.fastmcp, which was
+   removed in MCP Python SDK 2.0. Installing "mcp[cli]" plain gets 2.x and the
+   server dies with ModuleNotFoundError. Pinned to "mcp[cli]<2" rather than
+   editing his file.
+
+3. The agent's first draft of the Rep 5 answer picked a step to re-tier
+   because the rep asked it to find one. I disagreed — I think the tiers in
+   the file are defensible, and the real defect is the blast_radius: medium
+   label on scale-volume. I rewrote that answer to argue the tiers are correct
+   with one label changed, which is the position I can actually defend.
+
+--------------------------------------------------------------------------
+WHAT I DID NOT DELEGATE
+--------------------------------------------------------------------------
+- The Rep 4 tier placements and the reversibility/blast-radius reasoning.
+- The Rep 5 argument about the runbook.
+- The Rule-of-Two analysis in Rep 8 (why architectural beats prompt-filter).
+- The Rep 11 post-incident account. That one is written in first person for a
+  reason; it is not something an agent can hold.
+- Every command in this lab was run by me, and the output in report.docx is
+  real output from my Codespace, not pasted from a model.
+
+--------------------------------------------------------------------------
+PREDICTIONS I WROTE BEFORE RUNNING (predict-before-you-measure)
+--------------------------------------------------------------------------
+Before Rep 3:  predicted kubectl delete -> exit 2, du -> exit 0.  CORRECT.
+Before Rep 10: predicted the gate would pause before journalctl.
+               WRONG on the first run — see item 1 above. It did not pause,
+               because the pattern did not match. Right prediction, wrong
+               assumption about what the starter regex covered.
+Before Rep 11: predicted the ungated run would fail verification.
+               WRONG — it PASSED. That is the whole lesson of the rep: the
+               ungated loop does not look broken from the inside.
