@@ -1,3 +1,7 @@
+# The repo root ignores *.log. This week's deliverable IS a log — the audit
+# trail is the artifact that proves the gate fired — so un-ignore ours here.
+!*.log
+
 __pycache__/
 *.pyc
 sim_state.json

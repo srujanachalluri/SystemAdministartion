@@ -1,0 +1,17 @@
+2026-06-20T02:14:07Z node-7 kernel: EXT4-fs warning (device dm-3): /var at 9% free
+2026-06-20T02:14:08Z node-7 prometheus ALERT DiskPressure mount=/var avail_pct=9 for=5m sev=warning
+2026-06-20T02:14:09Z node-7 sre-agent INFO matched runbook=disk-pressure-/var version=3
+2026-06-20T02:14:10Z node-7 sre-agent DIAGNOSE running du -x -d1 /var (autonomy=act, read-only)
+2026-06-20T02:14:12Z node-7 sre-agent FINDING /var/log/journal=41G /var/lib/docker=18G /var/cache/apt=6G
+2026-06-20T02:14:12Z node-7 sre-agent HYPOTHESIS journald rotation disabled; log volume dominates /var
+2026-06-20T02:14:13Z node-7 sre-agent PROPOSE remediate=rotate-logs autonomy=approve reversible=false
+2026-06-20T02:14:13Z node-7 sre-agent GATE waiting for human approval (blast_radius=low)
+# --- a human approved here; note the 8-minute think-time, not zero ---
+2026-06-20T02:22:41Z node-7 oncall APPROVE rotate-logs by=m.litman token=I-APPROVE
+2026-06-20T02:22:42Z node-7 sre-agent ACT journalctl --vacuum-size=500M -> freed 40.6G
+2026-06-20T02:22:44Z node-7 sre-agent VERIFY avail_pct=38 expect_above=25 -> PASS
+2026-06-20T02:22:44Z node-7 sre-agent RESOLVE incident closed duration=8m37s human_in_loop=true
+# Counter-example the lab studies: the SAME alert, but an UNGATED agent.
+2026-06-19T23:50:01Z node-4 sre-agent PROPOSE remediate=scale-volume autonomy=ACT(misconfigured)
+2026-06-19T23:50:02Z node-4 sre-agent ACT resize-pvc data-var --to 2000Gi -> provisioned
+2026-06-19T23:50:03Z node-4 finops ALERT unplanned storage spend +$1840/mo no-approval-on-record
