@@ -1,0 +1,225 @@
+# autonomy-ladder.yaml — CRI's governed-autonomy policy.
+# ADAPTED from the chapter reference for Cornerstone Relief International.
+#
+# This file IS an architecture decision, written down: it states what an agent
+# may do alone and what a human must own. If this file and automation-plan.txt
+# ever disagree, THIS FILE is what runs and the document is the bug.
+#
+# Tiers (rising autonomy): observe -> recommend -> approve -> act
+#   observe   = read-only telemetry; never changes state
+#   recommend = posts a hypothesis/fix to chat; a human applies it
+#   approve   = agent prepares the change, a NAMED human clicks approve, agent applies
+#   act       = agent applies inside policy guardrails, logs, and can self-rollback
+#
+# CRI-specific additions to the reference:
+#   * every action carries a named human owner (EU AI Act Art. 14)
+#   * blast_radius is stated NUMERICALLY or the action does not ship
+#   * a never_automate list with NO promotion path
+#   * automatic demotion on any unexplained outcome
+#   * a rule_of_two check: untrusted input + sensitive access + state change
+#     may never all three be held unsupervised
+
+version: 1
+organization: "Cornerstone Relief International (CRI)"
+policy_owner: grace.adeyemi@cri.example.org      # accountable natural person, Art. 14
+technical_owner: hannah.kim@cri.example.org
+review_cadence_days: 90
+last_reviewed: "2026-08"
+
+defaults:
+  audit_log: required_before_execution   # intent written to WORM BEFORE the action;
+                                         # if the log write fails, the action does not run
+  audit_retention_years: 7               # EU AI Act Art. 12
+  model_id_pinned: true                  # pin by digest; "latest" banned org-wide
+  spend_cap_usd_per_day: 200             # hard stop, not an alert
+  agent_token_ttl_minutes: 60
+  tool_access: mcp_enumerated_allowlist  # an 'observe' agent cannot SEE a write tool
+  rule_of_two: enforced
+  kill_switch: any_of_the_nine           # stopping the machine requires no approval
+
+promotion_rule:
+  description: >
+    An action may be promoted ONE rung only, and only when all conditions hold.
+    Promotion is a change to the governance posture and goes through change
+    management like any other production change.
+  conditions:
+    - clean_at_current_rung_days: 60
+    - reversible_by_tested_automatic_rollback: true
+    - blast_radius_stated_numerically: true
+    - lethal_trifecta_satisfied: false     # if true, capped at 'recommend' forever
+  requires_signature_of: grace.adeyemi@cri.example.org
+
+demotion_rule:
+  trigger: any_unexplained_outcome
+  effect: demote_one_rung
+  applied_by: platform_automatically      # not by a meeting
+  rationale: "Demotion is cheap. Trust is not."
+
+actions:
+
+  # ---------------------------------------------------------------- OBSERVE --
+  - name: correlate_alerts_and_annotate_incident
+    tier: observe
+    owner: hannah.kim@cri.example.org
+    guardrails:
+      credential_scope: read_only          # no write scope exists on the token
+      blast_radius: 0
+    rollback: not_applicable
+    rationale: >
+      An agent cannot cause damage with a credential that cannot write. Roughly
+      80% of the operational value lives on this rung and almost none of the risk.
+
+  - name: summarise_night_shift_telemetry_for_handover
+    tier: observe
+    owner: peter.novak@cri.example.org
+    guardrails:
+      data_classes_in_scope: [internal]    # infrastructure telemetry only
+      beneficiary_data: forbidden
+      blast_radius: 0
+    rollback: not_applicable
+    rationale: >
+      Four continents, nine people, no follow-the-sun rota. The output is a
+      document, not an action.
+
+  # -------------------------------------------------------------- RECOMMEND --
+  - name: propose_firewall_rule_change
+    tier: recommend
+    promotion_ceiling: recommend           # PERMANENT — no promotion path
+    owner: priya.raman@cri.example.org
+    guardrails:
+      lethal_trifecta_check: required
+      network_policy_write: denied
+      blast_radius: org_wide_if_wrong
+    rollback: manual_only
+    rationale: >
+      Changes the trust boundary. The agent reads logs (untrusted input), sits
+      near sensitive systems (sensitive access), and would change network state.
+      That is all three legs. Rule of Two says a human takes one leg back — here
+      the human takes the action itself.
+
+  - name: propose_beneficiary_index_reingest
+    tier: recommend
+    promotion_ceiling: recommend           # PERMANENT
+    owner: miguel.santos@cri.example.org
+    guardrails:
+      data_class: restricted               # special-category personal data
+      human_in_the_loop: mandatory
+      provenance_partitioning: enforced    # external content never mixed with internal
+      blast_radius: case_note_index
+    rollback: reindex_from_source
+    rationale: >
+      A poisoned corpus fires again on every future retrieval, for a different
+      caseworker and a different household. No agent silently rewrites the corpus
+      that holds vulnerable people's medical details.
+
+  # ----------------------------------------------------------------- APPROVE --
+  - name: scale_deployment
+    tier: approve
+    owner: daniel.okoro@cri.example.org
+    guardrails:
+      max_replicas_delta: 4
+      cost_review: required
+      second_approver_above_usd_per_month: 500   # ruth.mensah@cri.example.org
+      blast_radius: 1_namespace
+    rollback: automatic_scale_back_on_approval_timeout
+    rationale: "Reversible, but it spends donor money. A human signs the spend."
+
+  - name: rotate_service_credential
+    tier: approve
+    owner: tomas.weber@cri.example.org
+    guardrails:
+      out_of_band_verification: required   # confirmation on a channel the agent
+                                           # cannot write to; number from the HR
+                                           # directory, never from the request
+      same_channel_request_and_approve: forbidden
+      previous_credential_retained_hours: 24
+      blast_radius: 1_service_principal
+    rollback: restore_previous_credential
+    rationale: >
+      The deepfake lesson, generalised. CRI was nearly defrauded of US$240,000 by
+      a convincing video call. A compromised agent, like a deepfake, owns ONE
+      channel. So the confirmation must arrive through a different one.
+
+  - name: apply_os_security_patch_non_production
+    tier: approve
+    owner: daniel.okoro@cri.example.org
+    guardrails:
+      canary_first: true
+      halt_on_healthcheck_failure: automatic
+      production_requires_change_ticket: true
+      blast_radius: 1_node_group
+    rollback: snapshot_restore
+    rationale: "Bounded and reversible, but patching is still a production change."
+
+  # --------------------------------------------------------------------- ACT --
+  - name: restart_stateless_pod
+    tier: act
+    owner: hannah.kim@cri.example.org
+    guardrails:
+      max_blast_radius: 1_pod
+      max_restarts_per_service_per_hour: 3   # then it stops and pages a human
+      stateful_workloads: excluded
+    rollback: automatic
+    rationale: >
+      Idempotent, reversible, bounded. The failure mode of getting it wrong is a
+      few seconds of a stateless replica. This is what 'act' is FOR.
+
+  - name: clear_transient_disk_alert_by_rotating_logs
+    tier: act
+    owner: hannah.kim@cri.example.org
+    guardrails:
+      path_allowlist: ["/var/log", "/var/log/containers"]
+      forbidden_paths: ["/var/data", "/srv/casenotes", "/backup"]
+      operation: rotate_and_compress_only   # never delete
+      archive_retention_days: 14
+      max_blast_radius: 1_node_log_directory
+    rollback: restore_from_compressed_archive
+    regulatory_mapping:                      # see governance.txt Appendix A
+      eu_ai_act_art_14: human_oversight_documented_and_tested
+      eu_ai_act_art_12: intent_and_outcome_logged_to_worm
+      nist_ai_rmf: [govern, map, measure, manage]
+    rationale: >
+      The most autonomous thing CRI's agent does, so it is the workflow mapped
+      to the regulation in full. Never deletes; only rotates. An agent must not
+      be able to destroy the evidence it is being watched by.
+
+  - name: open_and_enrich_incident_ticket
+    tier: act
+    owner: peter.novak@cri.example.org
+    guardrails:
+      can_create: true
+      can_close: false                       # creating is safe; closing hides
+      max_severity_settable: P2
+      max_blast_radius: ticketing_system
+    rollback: ticket_deletion_by_human
+    rationale: "An agent may raise its hand. It may never decide it is finished."
+
+never_automate:
+  policy: "No promotion path exists for these. This is a hard floor."
+  rationale: >
+    Each of these is either irreversible, or it removes the evidence CRI would
+    need to know that something went wrong. An agent must never be able to turn
+    off the lights it is being watched by.
+  actions:
+    - name: delete_persistent_volume
+      also_covers: [delete_beneficiary_data, purge_case_note_index]
+      owner: miguel.santos@cri.example.org
+      reason: irreversible_data_loss_about_vulnerable_people
+    - name: modify_identity_provider_group_or_role
+      owner: tomas.weber@cri.example.org
+      reason: privilege_escalation_path
+    - name: disable_or_reconfigure_logging_audit_or_backup
+      owner: priya.raman@cri.example.org
+      reason: destroys_the_evidence_trail
+    - name: send_communication_to_beneficiary_or_external_party
+      owner: aisha.bello@cri.example.org
+      reason: speaks_in_cri_voice_to_a_vulnerable_person
+    - name: approve_payment_or_change_payment_details
+      owner: ruth.mensah@cri.example.org
+      reason: "the US$240,000 lesson"
+
+accountability:
+  statement: >
+    When an automated action causes harm, the accountable person is the OWNER
+    named on that action's row — not "the agent", not "the vendor", not "the
+    model". That is the entire reason the name is written in this file.
