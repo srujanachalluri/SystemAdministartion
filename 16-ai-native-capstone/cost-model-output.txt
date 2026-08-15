@@ -1,0 +1,105 @@
+==============================================================================
+CRI AI ESTATE - SIZING AND COST MODEL   (mid-2026 price snapshot)
+Owner: Ruth Mensah, Finance Controller | Platform: Daniel Okoro
+==============================================================================
+
+[1] VRAM SIZING - self-hosted case-note lane (W1)
+    model shape       : ~70B params, 1 byte/param (FP8/INT8), 80 layers, 8 KV heads (GQA)
+    context / concurrency : 8,192 tokens x 24 in flight
+
+    weights                           70.0 GB
+    KV cache per request              2.68 GB
+    KV cache x24  concurrent        64.4 GB   <-- scales with LOAD, not model size
+    runtime overhead (12%)             16.1 GB
+    --------------------------------------------
+    TOTAL VRAM REQUIRED              150.6 GB
+    GPUs needed @ 80 GB                 2
+    KV cache is 48% of live VRAM. Size the CACHE, not just the model.
+    Headroom check: 2 GPUs hold ~27 concurrent requests at 8,192 ctx.
+
+[2] STORAGE
+    case-note corpus (source)              340 GB
+    vector index (2.4M chunks x 1024d)      15 GB
+    immutable backup copy (3-2-1-1-0)      442 GB
+    NOTE: the index is REBUILDABLE. We back up sources + embed config,
+          not the index. Cheaper, and it survives an embedding change.
+
+[3] MONTHLY COST BY SCENARIO
+
+    S0 baseline (today)
+      (9-person IT team, 600 staff, 4 continents)
+      W1 case-note RAG        132M tok  SELF-HOSTED  $   6,400/mo   (node at 15% of capacity)
+        effective $48.48/1M tok   |  same volume on mid-tier API would be $540/mo
+      W2 staff assistant       80M tok  small-fast API $     160/mo
+      W3 AIOps agent           50M tok  mid-tier API   $     210/mo
+      ------------------------------------------------------------------
+      TOTAL AI ESTATE                            $    6,770/mo   ($81,240/yr)
+
+    S1 field offices double
+      (8 continents-worth of offices; more case notes, more staff, more alerts)
+      W1 case-note RAG        277M tok  SELF-HOSTED  $   6,400/mo   (node at 31% of capacity)
+        effective $23.09/1M tok   |  same volume on mid-tier API would be $1,134/mo
+      W2 staff assistant      144M tok  small-fast API $     288/mo
+      W3 AIOps agent           80M tok  mid-tier API   $     336/mo
+      ------------------------------------------------------------------
+      TOTAL AI ESTATE                            $    7,024/mo   ($84,288/yr)
+
+    S2 public beneficiary chatbot
+      (public-facing intake assistant; W2 volume dominates and becomes bursty)
+      W1 case-note RAG        158M tok  SELF-HOSTED  $   6,400/mo   (node at 18% of capacity)
+        effective $40.40/1M tok   |  same volume on mid-tier API would be $648/mo
+      W2 staff assistant      520M tok  small-fast API $   1,040/mo
+      W3 AIOps agent           60M tok  mid-tier API   $     252/mo
+      ------------------------------------------------------------------
+      TOTAL AI ESTATE                            $    7,692/mo   ($92,304/yr)
+
+[4] SELF-HOST vs API CROSSOVER
+    Fixed self-host bill: $6,400/mo.
+    Crossover = the monthly token volume where the API bill equals it.
+    Below the crossover, PAY-PER-TOKEN IS CHEAPER.
+
+    Workload shape used: RAG-like, 91% input / 9% output tokens
+
+      API tier            blended $/1M     crossover (tok/mo)
+      ------------------ ------------- ----------------------
+      small-fast-tier    $        1.36               4,706M
+      mid-tier           $        4.08               1,569M
+      large-tier         $        7.25                 883M
+      budget-tier        $        0.73               8,828M
+
+    CRI's W1 volume today: 132M tokens/month.
+    Crossover vs mid-tier API: 1,569M tokens/month.
+    => ON COST ALONE, THE API WINS TODAY by $5,860/month ($70,320/yr).
+    => CRI SELF-HOSTS ANYWAY. That premium is the price of data
+       residency and non-retention for special-category data about
+       vulnerable people. See decision-memo.docx. This number is the
+       cost of the duty, and the board should see it, not be spared it.
+
+[5] SENSITIVITY - what utilisation does to the self-host unit price
+    A reserved node bills the same whether you use it or not.
+
+       utilisation      tokens/mo    $/1M tokens    vs mid-tier API
+      ------------ -------------- -------------- ------------------
+              10%            90M $        71.11        API cheaper
+              15%           135M $        47.41        API cheaper
+              25%           225M $        28.44        API cheaper
+              40%           360M $        17.78        API cheaper
+              60%           540M $        11.85        API cheaper
+              80%           720M $         8.89        API cheaper
+             100%           900M $         7.11        API cheaper
+
+    (mid-tier API blended reference: $4.08/1M tokens)
+    READ THIS ROW-BY-ROW BEFORE BUYING A GPU. CRI's W1 today sits near
+    15% utilisation. The node is bought for the duty and for headroom,
+    not because it is the cheap option at today's volume.
+
+[6] CONSUMPTION GUARDRAILS (owner: Ruth Mensah)
+    - Hard spend cap US$200/day on the API lane. Hard stop, not an alert.
+    - Per-user and per-agent rate limits; loop detector halts runaway agents.
+    - Self-host cost is FIXED, which is itself a budget control: the
+      case-note lane cannot surprise the board with a bill.
+    - Re-verify every price in this file quarterly. They are snapshots.
+==============================================================================
+Prices: mid-2026 snapshots. Model IDs pinned by digest in production.
+EU AI Act high-risk timeline treated as DEFERRED, PENDING ADOPTION - verify.
+==============================================================================

@@ -1,0 +1,206 @@
+================================================================================
+GOVERNANCE FRAMEWORK
+Cornerstone Relief International (CRI)
+Document 6 of 6 | Accountable executive: Grace Adeyemi, Director of IT
+Framework owner: Priya Raman, Security Lead
+Version 1.0 | Review cadence: 90 days | Board report: annually
+================================================================================
+
+--------------------------------------------------------------------------------
+0. WHAT GOVERNANCE IS, AT CRI
+--------------------------------------------------------------------------------
+A governance framework is not a paragraph that says "we take AI seriously." It is
+a control set where every row has a NAMED HUMAN OWNER, a CONCRETE ARTIFACT, and a
+GATE with a cadence. A row with no owner is not governed; it is hoped for.
+
+Three pillars, layered — they are not competitors:
+  NIST AI RMF 1.0    voluntary US framework: GOVERN / MAP / MEASURE / MANAGE.
+                     CRI uses it as the operating rhythm.
+  EU AI Act          binding EU law: risk tiers + GPAI regime. CRI has EU donors
+                     and EU-resident staff, so it is in scope regardless of where
+                     the servers sit. Timeline is volatile — see §4.
+  ISO/IEC 42001      certifiable AI management system (AIMS). CRI's target for
+                     external assurance; the control set below is built so that
+                     certification is a documentation exercise, not a rebuild.
+
+--------------------------------------------------------------------------------
+1. THE CONTROL SET — TEN ROWS, EVERY CELL FILLED
+--------------------------------------------------------------------------------
+(Machine-readable copy: code/governance-checklist.txt)
+
+ #  CONTROL                          OWNER (named)     ARTIFACT                        GATE / CADENCE
+ -- -------------------------------- ----------------- ------------------------------- ----------------------------
+ 1  Model registry: versioning,      Daniel Okoro      OCI registry + model card per    every promotion to staging
+    lineage, aliases, digest pinning                   pinned digest; no "latest" alias or production
+ 2  Model + data documentation       Miguel Santos     model card + dataset datasheet   before staging; re-issued on
+                                                       for the case-note corpus         any corpus change
+ 3  AIBOM (ingredients label)        Daniel Okoro      CycloneDX ML-BOM per release,    per release; blocks deploy
+                                                       incl. weights, embeddings, deps  if absent
+ 4  Retention satisfying EU AI Act   Priya Raman       WORM/object-lock bucket +        continuous; retention proof
+    Art. 12 logging                                    signed artifacts; 7-yr schedule  audited quarterly
+ 5  Autonomy ladder + approval gates Hannah Kim        code/autonomy-ladder.yaml        per action class; promotion
+                                                       + approval records              needs Grace Adeyemi's sign-off
+ 6  LLM security programme           Priya Raman       OWASP LLM Top 10 -> MITRE ATLAS  quarterly red team; at least
+                                                       map (security-plan.txt Part B)   one indirect-injection test
+ 7  Human oversight (EU AI Act       Grace Adeyemi     named accountable owner per      per system; confirmed at each
+    Art. 14)                                           system + documented override     90-day review
+                                                       and stop authority
+ 8  Consumption cost guardrails      Ruth Mensah       US$200/day hard cap; per-user    per budget period; 3 cap hits
+                                                       and per-agent rate limits        in a month => Finance review
+ 9  Risk classification (RMF MAP)    Priya Raman       risk register entry per AI       per system; 90-day review
+                                                       system, with EU AI Act tier
+10  Incident + drift response        Peter Novak       runbook + on-call rotation +     tested twice/year; one exercise
+                                                       documented kill switch          must be AI-specific
+
+    ALL NINE PEOPLE APPEAR SOMEWHERE IN THIS DOCUMENT SET. That is not decoration:
+    a nine-person team cannot afford a governance function that is somebody else's
+    job. Tomas Weber (identity, security-plan A-1/A-6) and Aisha Bello (field
+    liaison, ai-strategy A5, LLM09 overreliance) own rows in the security plan
+    rather than here.
+
+--------------------------------------------------------------------------------
+2. THE OPERATING RHYTHM (NIST AI RMF mapped to CRI's calendar)
+--------------------------------------------------------------------------------
+  GOVERN   Standing: the control set above; the autonomy ladder; the refused-uses
+           list in ai-strategy.txt §1. Accountable: Grace Adeyemi.
+           Cadence: 90-day review meeting, 60 minutes, minuted, decisions logged.
+  MAP      Every new AI use case is classified BEFORE build: data class, EU AI Act
+           risk tier, affected persons, refusal check. Owner: Priya Raman.
+           A use case with no risk-register entry does not get an environment.
+  MEASURE  The six success measures in ai-strategy.txt §5, plus: retrieval
+           precision on a held-out case-note question set, hallucination/refusal
+           rate, and red-team findings open vs closed. Owner: Hannah Kim.
+  MANAGE   Incident response, autonomy demotion (automatic, on any unexplained
+           outcome), model deprecation, and the quarterly price/version re-verify.
+           Owner: Peter Novak.
+
+--------------------------------------------------------------------------------
+3. DECISION RIGHTS — WHO CAN SAY YES, AND WHO CAN SAY STOP
+--------------------------------------------------------------------------------
+  New AI use case ...................... Priya Raman classifies; Grace Adeyemi approves
+  Promotion up the autonomy ladder ..... Hannah Kim proposes; Grace Adeyemi signs
+  Demotion down the ladder ............. AUTOMATIC on any unexplained outcome; no
+                                         meeting required, no approval required
+  Model version change ................. Daniel Okoro, via PR, two-person review
+  Spend cap change ..................... Ruth Mensah + Grace Adeyemi jointly
+  Access to RESTRICTED case notes ...... Miguel Santos, quarterly recertification
+  STOP AUTHORITY (kill switch) ......... ANY of the nine. No permission needed.
+                                         Owner of the mechanism: Priya Raman.
+                                         Tested quarterly.
+
+  The asymmetry is deliberate and it is the core governance stance: turning
+  autonomy UP requires a named signature; turning it DOWN requires nothing at all.
+  Anyone at CRI who thinks the machine is wrong can stop it, and will not be asked
+  to justify that before the fact. They will be asked afterward, and "I was not
+  sure" is an acceptable answer.
+
+--------------------------------------------------------------------------------
+4. APPENDIX A — REGULATION MAPPING
+    One autonomous remediation workflow -> EU AI Act Art. 14 + Art. 12 + NIST RMF
+--------------------------------------------------------------------------------
+WORKFLOW MAPPED: A-9 clear_transient_disk_alert_by_rotating_logs
+(automation-plan.txt, 'act' rung — the agent performs this WITHOUT a human.)
+
+  Why this one: it is the workflow where CRI's automation is at its most
+  autonomous, so it is where the regulatory obligations bind hardest. If the
+  mapping holds here it holds everywhere below it.
+
+  EU AI ACT ART. 14 — HUMAN OVERSIGHT
+  Obligation (paraphrased): high-risk AI systems shall be designed so that they
+  can be EFFECTIVELY OVERSEEN by natural persons, who must be able to understand
+  the system's capacities and limits, remain aware of automation bias, correctly
+  interpret its output, decide not to use it, and INTERVENE OR INTERRUPT via a
+  stop button or equivalent.
+    CRI's implementation, clause by clause:
+      "understand capacities and limits"  -> the action's row in
+          autonomy-ladder.yaml states tier, guardrails, blast radius, and
+          rationale in plain language. Hannah Kim's onboarding requires her to
+          be able to explain every 'act'-tier row without reading it.
+      "aware of automation bias"          -> the 3-restarts-per-hour and
+          allow-listed-paths guardrails exist precisely because a human watching
+          a green dashboard stops watching. The limit fires without a human.
+      "correctly interpret output"        -> every action writes intent BEFORE
+          execution and outcome after, to the same WORM timeline, so the
+          handover note reads as cause -> action -> result.
+      "decide not to use it"              -> the action can be disabled per
+          namespace by editing one YAML field; no code change, no redeploy.
+      "intervene or interrupt"            -> the kill switch (automation-plan
+          G-6): one documented command revokes every agent token and disables
+          the ladder. ANY of the nine may pull it. Tested quarterly.
+      "human oversight is assigned"       -> Art. 14 requires a natural person.
+          For A-9 that person is Hannah Kim, named in the YAML, named here, and
+          named in the incident runbook.
+
+  EU AI ACT ART. 12 — RECORD-KEEPING / LOGGING
+  Obligation (paraphrased): high-risk systems shall technically allow for the
+  AUTOMATIC RECORDING OF EVENTS (logs) over the system's lifetime, appropriate to
+  its purpose, enabling traceability.
+    CRI's implementation:
+      - Intent is written to a WORM (object-lock) bucket BEFORE the action runs.
+        If the log write fails, THE ACTION DOES NOT RUN. Logging is a
+        precondition, not a side effect.
+      - Each record carries: timestamp (UTC), action name, ladder tier, the
+        pinned model digest, the input telemetry that triggered it, the guardrail
+        evaluations and their results, the outcome, and the rollback state.
+      - Retention 7 years; no production identity, human or agent, holds a
+        credential that can delete from that bucket (security-plan A-6).
+      - Traceability test: for any action in the last 7 years, Priya Raman can
+        reconstruct what the system saw, what it did, which model version did it,
+        and who was accountable. That reconstruction is exercised in the
+        twice-yearly tabletop, not assumed.
+
+  NIST AI RMF FUNCTIONS
+      GOVERN  : the ladder is a signed policy with an accountable executive and a
+                90-day review; promotion is change-managed.
+      MAP     : A-9 is classified in the risk register — infrastructure telemetry
+                only, no personal data, bounded blast radius, reversible.
+      MEASURE : tracked metrics — actions executed, guardrail trips, rollbacks
+                fired, rollbacks that failed (target 0), and demotion events.
+      MANAGE  : automatic demotion on any unexplained outcome; incident runbook
+                covers "agent acted wrongly" as a named scenario.
+
+  ISO/IEC 42001 LINKAGE
+      The ladder + control set + 90-day review is the AIMS management cycle. The
+      artifacts named in §1 are the evidence an auditor would sample.
+
+  --- CURRENT ENFORCEMENT STATUS AND ADOPTION (VERIFY BEFORE RELYING ON IT) ---
+      CLAIM AS OF THIS DOCUMENT'S CHECK DATE: the EU AI Act's HIGH-RISK
+      obligations (Chapter III, including Art. 12 and Art. 14) have been subject
+      to a proposed DEFERRAL of their application date under the European
+      Commission's Digital Omnibus package. Status: PROPOSED / PROVISIONAL —
+      i.e. NOT YET ADOPTED into force at the time of checking. The prohibited-
+      practices provisions and the GPAI obligations commenced on their original,
+      earlier schedule and are NOT affected by the deferral.
+
+      >>> STUDENT/ARCHITECT ACTION REQUIRED BEFORE SUBMISSION OR CERTIFICATION:
+      >>> Open the official source, record the CURRENT high-risk application
+      >>> date and whether the deferral has been ADOPTED or is still PROPOSED,
+      >>> then fill these three lines and delete this note:
+      >>>     Source consulted : ____________________________________________
+      >>>                        (EUR-Lex / European Commission digital-strategy
+      >>>                         page for the AI Act implementation timeline)
+      >>>     Date checked     : ____________________
+      >>>     Status found     : [ ] adopted and in force  [ ] adopted, deferred
+      >>>                        [ ] proposed, not adopted
+      >>>     Current high-risk application date found: ____________________
+
+      CRI'S POSITION REGARDLESS OF THE DATE: this framework is built to the
+      Art. 12 and Art. 14 obligations NOW. A deferral changes when a regulator
+      can penalise CRI. It does not change what CRI owes to a beneficiary whose
+      medical details are in the corpus. We do not design to the enforcement
+      date; we design to the duty, and the date only tells us how much warning we
+      would get. Verification owner: Priya Raman, quarterly.
+
+--------------------------------------------------------------------------------
+5. APPENDIX B — WHAT GOVERNANCE DOES NOT COVER (stated on purpose)
+--------------------------------------------------------------------------------
+  - This framework does not make CRI compliant with any regulation. It makes CRI
+    ready to demonstrate what it does. Compliance is a finding, not a claim.
+  - It does not cover partner agencies' own AI use with data CRI shares with
+    them. That gap is real, it is on the risk register, and closing it is a 2027
+    contractual workstream. Owner: Grace Adeyemi.
+  - It does not cover beneficiaries' understanding of AI's role in their case.
+    CRI's position is that a beneficiary should never need to know, because AI is
+    never the decider (ai-strategy R1). If that ever changes, this framework must
+    be reopened before the change ships, not after.
+================================================================================

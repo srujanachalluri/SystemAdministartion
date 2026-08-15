@@ -1,0 +1,241 @@
+================================================================================
+AUTOMATION PLAN — AIOps and Agentic Operations
+Cornerstone Relief International (CRI)
+Document 3 of 6 | Owner: Hannah Kim, Automation & AIOps Engineer
+Escalation owner: Daniel Okoro, Platform Lead
+Version 1.0 | Review cadence: 90 days
+================================================================================
+
+--------------------------------------------------------------------------------
+0. THE PROBLEM THIS SOLVES
+--------------------------------------------------------------------------------
+Nine people. Four continents. Roughly 18 hours of the day have someone awake and
+working somewhere, and roughly 6 hours have nobody. The nine-person team cannot
+run a follow-the-sun rota, so automation is not a luxury at CRI — it is the only
+way the night shift exists at all.
+
+But the same property that makes an agent useful at 3 a.m. (it acts without
+asking) is the property that makes it dangerous. So CRI's automation design is
+not "what can we automate?" It is: FOR EACH ACTION, WHAT IS THE GATE, WHAT IS THE
+BLAST RADIUS, IS IT REVERSIBLE, AND WHO IS ACCOUNTABLE WHEN IT IS WRONG?
+
+--------------------------------------------------------------------------------
+1. THE THREE LAYERS (bottom to top)
+--------------------------------------------------------------------------------
+LAYER 1 — DETERMINISTIC AUTOMATION (no model involved)
+    Ansible playbooks, Terraform, cron/systemd timers, GitOps reconciliation.
+    Everything that CAN be deterministic IS deterministic. A model that restarts
+    a service is a worse tool than a systemd Restart= directive.
+    Owner: Daniel Okoro.
+
+LAYER 2 — AI-ASSISTED OBSERVABILITY (model reads, never writes)
+    Alert correlation, anomaly ranking, log summarisation, "probable cause" notes
+    attached to incidents. Strictly read-only credentials. Cannot mutate state
+    even if fully compromised, because it holds no token that can.
+    Owner: Hannah Kim.
+
+LAYER 3 — AGENTIC OPERATIONS (model proposes or performs actions)
+    Governed by code/autonomy-ladder.yaml. This is the layer the rest of this
+    document is about.
+    Owner: Hannah Kim. Accountable executive: Grace Adeyemi.
+
+--------------------------------------------------------------------------------
+2. THE AUTONOMY LADDER — FOUR RUNGS
+--------------------------------------------------------------------------------
+   observe   -> recommend -> approve -> act
+   read-only    posts a      agent      agent applies inside guardrails,
+                fix, human   prepares,  logs, and can self-roll-back
+                applies      named
+                             human
+                             clicks
+
+PROMOTION RULE. An action may only be promoted one rung, and only when ALL of:
+   1. It has run at the rung below for 60 days with zero unexplained outcomes.
+   2. It is REVERSIBLE by an automated rollback that has been tested.
+   3. Its BLAST RADIUS is bounded and stated numerically.
+   4. It does not simultaneously satisfy the LETHAL TRIFECTA
+      (untrusted input + access to sensitive data + ability to change state or
+      communicate externally). If it does, it is capped at 'recommend'
+      regardless of how well it has behaved. This is the Rule of Two: an action
+      may hold at most two of those three properties without a human in the loop.
+   5. Hannah Kim proposes it and Grace Adeyemi signs it. Promotions are a change
+      to the governance posture, so they go through change management like any
+      other production change.
+
+DEMOTION RULE. Any action that produces an unexplained outcome is demoted one
+rung IMMEDIATELY and automatically by the platform, not by a meeting. It is
+re-promoted only through the promotion rule above. Demotion is cheap. Trust is
+not.
+
+--------------------------------------------------------------------------------
+3. THE ACTION SET — AT LEAST ONE ON EVERY RUNG
+--------------------------------------------------------------------------------
+(The machine-readable version is code/autonomy-ladder.yaml. If the two ever
+disagree, the YAML is what runs and this table is the bug.)
+
+RUNG: OBSERVE  (read-only, never changes state)
+  A-1  correlate_alerts_and_annotate_incident
+       Gate:        none required (no state change possible)
+       Guardrail:   read-only service account; no write scope exists on the token
+       Blast radius: zero
+       Reversible:  n/a
+       Audit:       every correlation written to the incident timeline (WORM)
+       Owner:       Hannah Kim
+       Rationale:   The agent cannot do damage with a credential that cannot
+                    write. This is the rung where 80% of the value lives and it
+                    carries almost none of the risk.
+
+  A-2  summarise_night_shift_telemetry_for_handover
+       Gate:        none; output is a document, not an action
+       Guardrail:   no beneficiary data in scope (infrastructure telemetry only)
+       Blast radius: zero
+       Audit:       handover note archived
+       Owner:       Peter Novak
+
+RUNG: RECOMMEND  (agent posts a fix; a human applies it)
+  A-3  propose_firewall_rule_change
+       Gate:        human applies manually; agent has no network-policy write
+       Guardrail:   LETHAL TRIFECTA CHECK REQUIRED. A firewall rule changes a
+                    trust boundary. Permanently capped at 'recommend'.
+       Blast radius: potentially org-wide -> never automated
+       Reversible:  yes, but detection of a bad rule can lag by hours, so
+                    "reversible" is not enough here
+       Audit:       proposal + applying human + diff, retained 7 years
+       Owner:       Priya Raman (Security Lead)
+       Rationale:   The agent reads logs (untrusted input), can reach network
+                    control (state change), and operates near sensitive systems.
+                    That is all three legs of the trifecta. Rule of Two says a
+                    human takes one leg back. The human takes the action.
+
+  A-4  propose_beneficiary_index_reingest
+       Gate:        Data & Records Manager applies
+       Guardrail:   touches RESTRICTED data -> permanently capped at 'recommend'
+       Blast radius: the case-note index
+       Audit:       full, retained per Art. 12 schedule
+       Owner:       Miguel Santos
+
+RUNG: APPROVE  (agent prepares; a named human clicks; agent applies)
+  A-5  scale_deployment
+       Gate:        named approver in business hours; Ruth Mensah (Finance) is a
+                    second approver above a US$500/month delta
+       Guardrail:   max_replicas_delta: 4; cost_review required
+       Blast radius: one namespace
+       Reversible:  yes, automatic scale-back on approval timeout
+       Audit:       approver identity, delta, cost estimate, outcome
+       Owner:       Daniel Okoro
+       Rationale:   Reversible, but it spends donor money. A human signs spend.
+
+  A-6  rotate_service_credential
+       Gate:        OUT-OF-BAND VERIFICATION REQUIRED — the approval must be
+                    confirmed on a channel the agent cannot write to (a phone
+                    call to a number from the HR directory, not a number supplied
+                    in the request).
+       Guardrail:   never both 'request' and 'approve' from the same channel
+       Blast radius: one service principal
+       Reversible:  yes, previous credential retained for 24h
+       Audit:       full, plus the out-of-band verification record
+       Owner:       Tomas Weber (Identity & Access)
+       Rationale:   This is the deepfake lesson generalised. If an instruction
+                    arrives through a channel, the confirmation must arrive
+                    through a DIFFERENT channel. A compromised agent, like a
+                    convincing video call, only owns one channel.
+
+  A-7  apply_os_security_patch_to_non_production
+       Gate:        named approver; production requires a change ticket
+       Guardrail:   canary node first; automatic halt on health-check failure
+       Blast radius: one node group
+       Reversible:  yes, snapshot before patch
+       Audit:       full
+       Owner:       Daniel Okoro
+
+RUNG: ACT  (agent applies inside guardrails, logs, self-rolls-back)
+  A-8  restart_stateless_pod
+       Gate:        policy only (no human in the loop)
+       Guardrail:   max 1 pod; max 3 restarts per service per hour, then it stops
+                    and pages a human; automatic rollback
+       Blast radius: 1 pod
+       Reversible:  yes, automatically
+       Audit:       every restart appended to the WORM audit trail
+       Owner:       Hannah Kim
+       Rationale:   Idempotent, reversible, bounded, and the failure mode of
+                    getting it wrong is a few seconds of a stateless replica.
+                    This is what 'act' is FOR.
+
+  A-9  clear_transient_disk_alert_by_rotating_logs
+       Gate:        policy only
+       Guardrail:   only paths on an explicit allow-list; never touches
+                    /var/data or any beneficiary data volume; never deletes,
+                    only rotates and compresses
+       Blast radius: one node's log directory
+       Reversible:  compressed archive retained 14 days
+       Audit:       full
+       Owner:       Hannah Kim
+
+  A-10 open_and_enrich_incident_ticket
+       Gate:        policy only
+       Guardrail:   can create, can never close; cannot set severity above P2
+       Blast radius: the ticketing system
+       Reversible:  yes
+       Audit:       full
+       Owner:       Peter Novak
+
+NEVER-AUTOMATED LIST (hard floor; no promotion path exists)
+  N-1  delete_persistent_volume / delete any beneficiary data
+  N-2  modify identity provider group membership or role assignment
+  N-3  disable or reconfigure logging, audit, or backup
+  N-4  send any communication to a beneficiary or an external party
+  N-5  approve a payment or change payment details (the US$240,000 lesson)
+  Rationale: each of these is either irreversible, or it removes the evidence we
+  would need to know that something went wrong. An agent must never be able to
+  turn off the lights it is being watched by.
+
+--------------------------------------------------------------------------------
+4. GUARDRAILS THAT APPLY TO EVERY RUNG
+--------------------------------------------------------------------------------
+  G-1  Model ID pinned by digest. No "latest". A model swap is a change.
+  G-2  Spend cap US$200/day platform-wide; hard stop, not an alert. Owner: Ruth
+       Mensah. Breach pages Finance and Platform simultaneously.
+  G-3  Every agent action appended to a WORM (object-lock) audit trail before
+       the action executes, not after. If the log write fails, the action does
+       not run.
+  G-4  Tool access via MCP with an ENUMERATED allow-list per rung. An agent at
+       'observe' physically cannot see a write tool in its tool list.
+  G-5  Time-boxed credentials: agent tokens live 60 minutes, scoped to one
+       namespace, and are never long-lived secrets in a config file.
+  G-6  Kill switch: a single documented command that revokes every agent token
+       and disables the ladder. Tested quarterly. Owner: Priya Raman.
+       Any of the nine can pull it; nobody needs permission to stop the machine.
+  G-7  Blast radius is stated NUMERICALLY for every action or the action does not
+       ship. "Small" is not a blast radius.
+
+--------------------------------------------------------------------------------
+5. THE 3 A.M. WALKTHROUGH (how this actually behaves)
+--------------------------------------------------------------------------------
+  02:58  Disk-usage alert on a Nairobi node. Nobody awake in that region.
+  02:58  A-1 (observe) correlates it with a log-rotation failure 40 minutes
+         earlier. Annotates the incident. No state change.
+  02:59  A-9 (act) matches the path against the allow-list. /var/log is on it.
+         Writes the intended action to the WORM log FIRST, rotates and
+         compresses, verifies the alert clears, writes the outcome.
+  03:00  A-10 (act) opens a P3 ticket with the timeline attached.
+  03:01  The agent notices the same node's certificate expires in 6 days and
+         drafts a renewal plan. Certificate renewal is not on the ladder at
+         'act'. It stops at A-3-class behaviour: it RECOMMENDS, and the
+         recommendation waits in the handover queue.
+  07:30  Peter Novak reads a two-line handover note instead of 300 alerts, and
+         approves the certificate renewal with one click.
+
+  Nothing here required a human to be awake, and nothing here let a machine make
+  a decision it could not undo.
+
+--------------------------------------------------------------------------------
+6. WHERE THE JUDGMENT LIVES
+--------------------------------------------------------------------------------
+The agent decides HOW. The ladder decides WHETHER. The ladder is written by
+humans, signed by a named human, changed only through change management, and
+reviewed every 90 days.
+
+When an automated action causes harm, the accountable person is the OWNER named
+on that action's row — not "the agent," not "the vendor," and not "the model."
+That is the whole point of writing the name in the file.
+================================================================================

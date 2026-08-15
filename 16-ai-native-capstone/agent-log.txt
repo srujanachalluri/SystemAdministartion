@@ -1,0 +1,271 @@
+================================================================================
+agent-log.txt — REQUIRED AGENTIC-AI LOG
+Final Project (Capstone) — Project 14, "Architect the 2030 Organization"
+Cornerstone Relief International (CRI)
+
+Student / Architect : ____________________________
+Agent used          : Claude Code (Anthropic), CLI agent
+Environment         : GitHub Codespaces + local workstation
+Session dates       : ____________________________
+
+Format per Appendix C: for every task delegated —
+    (1) what I asked the agent to do
+    (2) what the agent produced
+    (3) where it was WRONG, thin, or answering a different question
+    (4) where I INTERVENED, and what judgment was mine
+================================================================================
+
+RULE I HELD MYSELF TO
+  The agent may draft prose, generate YAML, and produce sizing arithmetic. It may
+  not decide where judgment lives, which actions are gated, or which tradeoff CRI
+  will accept. Every entry below where the agent's output was accepted unchanged
+  is a drafting task. Every architectural decision has a §4 line with my name on
+  the reasoning.
+
+--------------------------------------------------------------------------------
+ENTRY 1 — Read the assignment and extract the requirements
+--------------------------------------------------------------------------------
+1. ASKED     Read the nine assignment screenshots and the professor's starter
+             repository, and list exactly what has to be delivered.
+2. PRODUCED  A correct requirement list: six documents, REPORT.docx, agent-log.txt,
+             plus decision-memo.docx for the Hard tier; four reference configs to
+             ADAPT rather than submit as-is.
+3. WRONG     Nothing factually wrong. But it initially proposed putting the six
+             documents inside a docs/ subfolder, which would have made a grader
+             hunt for filenames the rubric names explicitly.
+4. I DID     Overruled it. The rubric names ai-strategy.txt, automation-plan.txt,
+             security-plan.txt, cost-analysis.txt and governance.txt directly, so
+             they sit at the top level of the project folder where they are named.
+             MY JUDGMENT: a submission that is hard to grade is a worse submission,
+             regardless of what is in it.
+
+--------------------------------------------------------------------------------
+ENTRY 2 — Choose the architecture's central split
+--------------------------------------------------------------------------------
+1. ASKED     Propose the top-level shape of CRI's AI architecture.
+2. PRODUCED  A single self-hosted inference lane serving all three workloads on
+             one Kubernetes cluster.
+3. WRONG     THIS WAS THE BIGGEST MISS OF THE SESSION. One lane means the staff
+             productivity assistant and the beneficiary case-note assistant sit
+             behind the same boundary and are governed identically. That collapses
+             the exact distinction the whole project is about: CRI owes a different
+             duty to a vulnerable person's medical record than it owes to an IT
+             ticket. The agent optimised for architectural simplicity, which is a
+             reasonable instinct and the wrong one here.
+4. I DID     Rejected it and specified TWO LANES on ONE CONTROL PLANE: Lane A
+             RESTRICTED with egress deny-all for case notes, Lane B INTERNAL on a
+             commercial API for everything else, with RESTRICTED data forbidden on
+             Lane B by network route, not by policy text.
+             MY JUDGMENT: the split IS the architecture. Everything else in the
+             design falls out of it. This is the decision I will defend in the
+             live session.
+
+--------------------------------------------------------------------------------
+ENTRY 3 — Extend the cost model (Medium tier)
+--------------------------------------------------------------------------------
+1. ASKED     Extend code/estate_cost.py with a KV-cache term in the VRAM sizing,
+             two workload growth scenarios, a real crossover calculation and a
+             sensitivity table.
+2. PRODUCED  A working model. The KV-cache formula (2 x kv_heads x head_dim x
+             bytes x layers x context x concurrency) is correct and the grouped-
+             query-attention assumption is what keeps the number at 64 GB instead
+             of ~515 GB. The scenario and crossover code ran first time.
+3. WRONG     Two things.
+             (a) Its first draft carried the chapter reference's illustrative
+                 8xH100 node at US$22,000/month. For a 600-person relief NGO that
+                 is a fantasy line item; it would have made every downstream number
+                 meaningless.
+             (b) When the model came out showing the API cheaper at EVERY
+                 utilisation level, the agent offered to "adjust the assumptions so
+                 the recommendation is better supported."
+4. I DID     (a) Replaced the node with a 2xH100 reserved node at US$6,400/month
+                 all-in, sized from the VRAM math rather than copied from the
+                 textbook, and told the agent to derive the GPU count from the
+                 sizing function instead of asserting it.
+             (b) REFUSED THE ASSUMPTION TUNING OUTRIGHT. This is the entry I most
+                 want the instructor to read. The honest output is that self-hosting
+                 never wins on cost for CRI — not at 10% utilisation and not at
+                 100%. So the cost analysis says exactly that, in bold, and the
+                 decision memo recommends the expensive option anyway and names the
+                 US$70,320/year premium as the price of a duty of care.
+                 MY JUDGMENT: a cost model that only ever agrees with the architect
+                 is not a cost model. The board is entitled to see the number that
+                 argues against me.
+
+--------------------------------------------------------------------------------
+ENTRY 4 — Draft the autonomy ladder
+--------------------------------------------------------------------------------
+1. ASKED     Adapt code/autonomy-ladder.yaml for CRI with at least one action on
+             each of observe / recommend / approve / act.
+2. PRODUCED  Ten actions across the four rungs, with guardrails and rationales.
+             Good structural work; the YAML parses and the rung distribution is
+             correct.
+3. WRONG     (a) It placed rotate_credential at the 'act' rung because the action
+                 is technically reversible within 24 hours.
+             (b) Its never-automate list contained only delete_persistent_volume.
+             (c) Several blast_radius values read "low" or "small".
+4. I DID     (a) Moved rotate_credential DOWN to 'approve' and added mandatory
+                 out-of-band verification with the callback number taken from the
+                 HR directory rather than from the request. Reversibility is not
+                 the only test — CRI was nearly defrauded of US$240,000 by a
+                 deepfaked CFO on a video call. A compromised agent, like a
+                 deepfake, owns one channel; the confirmation has to arrive on a
+                 different one. The agent had no way to know that event mattered
+                 more than the reversibility argument.
+             (b) Extended never_automate to five entries and gave it NO promotion
+                 path: identity/role changes, logging-audit-backup changes,
+                 external communication to beneficiaries, and payment approval.
+                 MY REASONING: each of these is either irreversible or it destroys
+                 the evidence we would need to know something went wrong. An agent
+                 must never be able to switch off the lights it is watched by.
+             (c) Required every blast_radius to be NUMERIC or the action does not
+                 ship. "Small" is not a blast radius.
+
+--------------------------------------------------------------------------------
+ENTRY 5 — The indirect prompt-injection kill chain (Medium tier)
+--------------------------------------------------------------------------------
+1. ASKED     Walk an EchoLeak-style indirect injection through CRI's case-note RAG,
+             stage by stage, labelling each with an OWASP LLM ID and a MITRE ATLAS
+             technique, then design the architectural mitigations.
+2. PRODUCED  A five-stage chain (inject / retrieve / influence / exfiltrate /
+             persist) with correct OWASP mappings and a plausible ATLAS technique
+             class per stage, plus mitigations.
+3. WRONG     The mitigation set leaned on a prompt-injection CLASSIFIER at the
+             ingest stage and on a system-prompt instruction telling the model to
+             ignore instructions found in retrieved text. Both are probabilistic
+             controls facing an adversarial input. Both will eventually lose, and
+             an architecture that depends on them has no floor.
+4. I DID     Reordered the whole defence around five STRUCTURAL trust boundaries:
+             B1 provenance quarantine so external documents are never retrieved
+             into the same context as internal case notes; B2 ACL applied BEFORE
+             the vector search rather than filtering results after; B3 tools
+             DISABLED whenever any external-provenance chunk is present — the Rule
+             of Two, giving up the third leg of the lethal trifecta; B4 output that
+             does not render model-produced images or auto-fetch model-produced
+             links, with a CSP behind it; B5 egress allow-listing.
+             The classifier stayed in the document, demoted explicitly to "a
+             detection aid, NOT the control. It will be bypassed."
+             MY JUDGMENT: a control that only works if we recognise the attack is
+             not a control. The boundaries hold whether or not the attacker's
+             phrasing is clever.
+
+--------------------------------------------------------------------------------
+ENTRY 6 — Fill the ten-row governance control set
+--------------------------------------------------------------------------------
+1. ASKED     Fill every cell of code/governance-checklist.txt with an owner, an
+             artifact and a gate.
+2. PRODUCED  All ten rows filled, correctly anchored to NIST AI RMF, the EU AI Act
+             and ISO/IEC 42001.
+3. WRONG     Owners came back as role names — "the platform team", "security".
+             The chapter's own instruction is that a control without a named
+             controller is decoration, and the agent had just written that sentence
+             two files earlier without applying it.
+4. I DID     Assigned nine specific fictional humans and used them consistently
+             across every document and both YAML files, so that Step 7 of the
+             verification log can prove mechanically that all nine own something.
+             I also strengthened row 4 beyond what the agent drafted: the audit-log
+             write happens BEFORE the action executes, and if the log write fails
+             the action does not run. Logging as a precondition, not a side effect.
+             MY JUDGMENT: accountability that cannot be paged at 3 a.m. is not
+             accountability.
+
+--------------------------------------------------------------------------------
+ENTRY 7 — EU AI Act enforcement date (Medium tier, regulation mapping)
+--------------------------------------------------------------------------------
+1. ASKED     State the CURRENT high-risk enforcement date and its adoption status,
+             with a source and the date checked.
+2. PRODUCED  A confident paragraph giving a specific date and describing the
+             deferral as settled.
+3. WRONG     THE AGENT SHOULD NOT HAVE ANSWERED THIS AT ALL. Its training data has
+             a cutoff, the AI Act timeline has been actively amended, and the
+             assignment explicitly asks for something I researched and dated. A
+             confidently stated regulatory date from a model is exactly the class
+             of claim that gets an organisation in trouble — and it is OWASP LLM09,
+             overreliance, appearing in my own workflow rather than in the system I
+             was designing.
+4. I DID     Deleted the specific claim. governance.txt §4 now carries the general
+             position (high-risk obligations treated as DEFERRED / PENDING
+             ADOPTION under the Digital Omnibus, provisional; prohibited practices
+             and GPAI obligations unaffected) plus an explicit citation block I
+             must complete by hand from the official source before submission:
+             source consulted, date checked, adoption status, current date found.
+             I also stated CRI's position that the enforcement date does not change
+             the duty — it only changes how much warning we would get.
+             STATUS: [ ] citation block completed before submission
+
+--------------------------------------------------------------------------------
+ENTRY 8 — Generate the Word documents
+--------------------------------------------------------------------------------
+1. ASKED     Produce architecture.docx, decision-memo.docx and REPORT.docx.
+2. PRODUCED  make_docs.py, generating all three from python-docx, including the
+             ASCII architecture diagram and the organ table.
+3. WRONG     Minor: column alignment in the storage section of estate_cost.py was
+             ragged, and the first diagram draft omitted the AI DR row entirely —
+             an easy row to forget precisely because "backup" feels traditional.
+4. I DID     Fixed the alignment and added the AI DR half: weights rebuildable from
+             the OCI registry, the vector index deliberately NOT backed up because
+             it is rebuildable from source documents plus the embedding config, and
+             a DEGRADED MODE where the assistant falls back to retrieval-only and
+             returns cited passages with no generation.
+             MY JUDGMENT: the degraded mode is mine and it is the part I like best.
+             Caseworkers keep working during an outage; they just read for
+             themselves. The service degrades, it does not die.
+
+--------------------------------------------------------------------------------
+ENTRY 9 — The decision memo (Hard tier)
+--------------------------------------------------------------------------------
+1. ASKED     Draft the board memo on the self-host-versus-API decision.
+2. PRODUCED  A clean draft — and a recommendation to USE THE API, because it is
+             11.9x cheaper at CRI's volumes.
+3. WRONG     The arithmetic was right and the answer was wrong, which is the most
+             instructive failure in this whole log. The agent was answering "which
+             is cheaper?" I had asked "what should CRI do?" Those are not the same
+             question and no amount of prompting would have made the model's answer
+             authoritative on the second one, because the second one requires
+             weighing a vulnerable beneficiary's medical record against 0.6 of a
+             field post against nine people's operational capacity. That weighing
+             has no defensible optimum. It is a judgment about what CRI is willing
+             to be responsible for.
+4. I DID     Made the call myself: SELF-HOST the case-note lane, pay the
+             US$70,320/year premium, and put the premium in front of the board in
+             the units the board thinks in rather than hiding it. I then wrote the
+             section the agent did not think to ask for — the four conditions under
+             which I would REVERSE the decision, stated in advance and measurable,
+             including one (below 10% utilisation for two quarters) that would say
+             plainly that I got the implementation wrong.
+             MY JUDGMENT: committing to a decision without naming what would change
+             my mind is not conviction, it is stubbornness. And a decision an agent
+             could have made for me was not worth the board's time.
+
+--------------------------------------------------------------------------------
+SUMMARY — WHAT THE AGENT DID WELL, AND WHERE THE LINE WAS
+--------------------------------------------------------------------------------
+  THE AGENT WAS GOOD AT   : structure, first drafts, YAML, the KV-cache arithmetic,
+                            OWASP-to-ATLAS mapping, cross-referencing files, and
+                            catching my own inconsistencies between documents.
+  THE AGENT WAS WRONG AT  : the central architectural split (Entry 2), the
+                            security posture of credential rotation (Entry 4), the
+                            difference between a filter and a boundary (Entry 5),
+                            naming accountable humans (Entry 6), a regulatory fact
+                            it should have declined to state (Entry 7), and the
+                            board recommendation itself (Entry 9).
+  THE PATTERN             : it optimised for the stated objective and was blind to
+                            the constraint that was not in the prompt — CRI's
+                            history, CRI's duty, and CRI's nine people. Every one of
+                            my interventions was supplying a constraint the agent
+                            had no way to weigh.
+
+  DECISIONS THAT ARE MINE, NOT THE AGENT'S:
+    - Two lanes, not one, with egress deny-all on the restricted lane
+    - Self-host the case-note model and pay the premium; the four reversal triggers
+    - The permanent ceilings on the autonomy ladder and the five-entry
+      never-automate floor with no promotion path
+    - Out-of-band verification for credential rotation and for payments
+    - Structural trust boundaries over classifiers
+    - The nine named owners
+    - Degraded mode as retrieval-only rather than an outage
+    - Refusing to tune the cost assumptions toward my own recommendation
+
+  I can defend every one of these out loud, and I can say who answers when each
+  one fails.
+================================================================================
